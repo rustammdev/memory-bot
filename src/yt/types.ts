@@ -7,6 +7,10 @@ export interface VideoInfo {
   readonly durationFormatted: string | null;
 }
 
+export interface VideoApiItem extends VideoInfo {
+  readonly hasTranscript: boolean;
+}
+
 export interface ChannelMetadataSummary {
   readonly version: number;
   readonly overview: string | null;
@@ -15,11 +19,19 @@ export interface ChannelMetadataSummary {
   readonly language: string;
 }
 
+export interface RawChannelData {
+  readonly channelName: string;
+  readonly channelId: string;
+  readonly handle: string;
+  readonly totalVideos: number;
+  readonly videos: ReadonlyArray<VideoInfo>;
+}
+
 export interface ChannelVideosResponse {
   readonly channelName: string;
   readonly channelId: string;
   readonly handle: string;
   readonly totalVideos: number;
   readonly metadata: ChannelMetadataSummary | null;
-  readonly videos: ReadonlyArray<VideoInfo>;
+  readonly videos: ReadonlyArray<VideoApiItem>;
 }

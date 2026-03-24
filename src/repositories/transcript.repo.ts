@@ -25,14 +25,15 @@ export async function findByVideoId(
   return (rows[0] as TranscriptRow) ?? null;
 }
 
-export async function hasTranscript(channelId: string): Promise<boolean> {
+export async function findTranscribedVideoIds(
+  channelId: string,
+): Promise<ReadonlySet<string>> {
   const rows = await db`
-    SELECT 1 FROM transcripts t
+    SELECT v.id FROM transcripts t
     JOIN videos v ON v.id = t.video_id
     WHERE v.channel_id = ${channelId}
-    LIMIT 1
   `;
-  return rows.length > 0;
+  return new Set(rows.map((r: { id: string }) => r.id));
 }
 
 export async function upsert(data: TranscriptInsert): Promise<TranscriptRow> {

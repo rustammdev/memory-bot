@@ -2,6 +2,7 @@ import { NotFoundError } from "../lib/errors";
 import * as channelRepo from "../repositories/channel.repo";
 import * as videoRepo from "../repositories/video.repo";
 import * as metadataRepo from "../repositories/metadata.repo";
+import * as transcriptRepo from "../repositories/transcript.repo";
 import { fetchChannelVideos } from "../yt/fetch-videos";
 import { resolveChannel, toApiResponse } from "./channel.helpers";
 import type { ChannelVideosResponse } from "../yt/types";
@@ -15,16 +16,27 @@ interface MetadataVersionsResponse {
   readonly versions: ReadonlyArray<metadataRepo.MetadataRow>;
 }
 
+interface VideosFilter {
+  readonly transcribedOnly?: boolean;
+}
+
 export async function getChannelVideos(
   channelInput: string | null,
+  filter: VideosFilter = {},
 ): Promise<ChannelVideosResponse> {
   const existing = await resolveChannel(channelInput);
   if (existing) {
-    const [videos, metadata] = await Promise.all([
+    const [allVideos, metadata] = await Promise.all([
       videoRepo.findByChannelId(existing.id),
       metadataRepo.findLatest(existing.id),
     ]);
-    return toApiResponse(existing, videos, metadata);
+    const transcribedIds = filter.transcribedOnly
+      ? await transcriptRepo.findTranscribedVideoIds(existing.id)
+      : new Set<string>();
+    const videos = filter.transcribedOnly
+      ? allVideos.filter((v) => transcribedIds.has(v.id))
+      : allVideos;
+    return toApiResponse(existing, videos, metadata, transcribedIds);
   }
 
   const ytData = await fetchChannelVideos(channelInput!);

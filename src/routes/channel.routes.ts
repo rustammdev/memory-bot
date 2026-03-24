@@ -10,7 +10,8 @@ export const channelRoutes = {
   "/api/channels/videos": {
     GET: async (req: Request) => {
       try {
-        const result = await getChannelVideos(queryParam(req, "channel"));
+        const transcribed = queryParam(req, "transcribed") === "true";
+        const result = await getChannelVideos(queryParam(req, "channel"), { transcribedOnly: transcribed });
         return ok(result);
       } catch (err) {
         return fail(err);

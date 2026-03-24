@@ -1,4 +1,4 @@
-import { ValidationError } from "../lib/errors";
+import { requireParam } from "../lib/request";
 import * as channelRepo from "../repositories/channel.repo";
 import * as videoRepo from "../repositories/video.repo";
 import * as metadataRepo from "../repositories/metadata.repo";
@@ -6,10 +6,8 @@ import { extractUsername } from "../yt/parse-channel";
 import type { ChannelVideosResponse } from "../yt/types";
 
 export function requireChannelParam(input: string | null): string {
-  if (!input || input.trim().length === 0) {
-    throw new ValidationError("\"channel\" query parameter is required");
-  }
-  return extractUsername(input);
+  const trimmed = requireParam(input, "channel");
+  return extractUsername(trimmed);
 }
 
 export async function resolveChannel(
@@ -23,6 +21,7 @@ export function toApiResponse(
   channel: channelRepo.ChannelRow,
   videos: ReadonlyArray<videoRepo.VideoRow>,
   metadata: metadataRepo.MetadataRow | null,
+  transcribedIds: ReadonlySet<string> = new Set(),
 ): ChannelVideosResponse {
   return {
     channelName: channel.name,
@@ -45,6 +44,7 @@ export function toApiResponse(
       viewCount: v.view_count,
       duration: v.duration_sec,
       durationFormatted: v.duration_formatted,
+      hasTranscript: transcribedIds.has(v.id),
     })),
   };
 }
