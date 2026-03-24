@@ -1,3 +1,4 @@
+import { NotFoundError } from "../lib/errors";
 import { requireParam } from "../lib/request";
 import * as channelRepo from "../repositories/channel.repo";
 import * as videoRepo from "../repositories/video.repo";
@@ -17,6 +18,16 @@ export async function resolveChannel(
   return channelRepo.findByUsername(username);
 }
 
+export async function requireChannel(
+  input: string | null,
+): Promise<channelRepo.ChannelRow> {
+  const channel = await resolveChannel(input);
+  if (!channel) {
+    throw new NotFoundError("Channel not found. Sync videos first.");
+  }
+  return channel;
+}
+
 export function toApiResponse(
   channel: channelRepo.ChannelRow,
   videos: ReadonlyArray<videoRepo.VideoRow>,
@@ -27,6 +38,8 @@ export function toApiResponse(
     channelName: channel.name,
     channelId: channel.youtube_id,
     handle: channel.username,
+    avatarUrl: channel.avatar_url,
+    bannerUrl: channel.banner_url,
     totalVideos: channel.video_count,
     metadata: metadata
       ? {

@@ -7,6 +7,8 @@ export interface ChannelRow {
   readonly name: string;
   readonly followers: number;
   readonly video_count: number;
+  readonly avatar_url: string | null;
+  readonly banner_url: string | null;
   readonly last_synced_at: Date;
   readonly created_at: Date;
   readonly updated_at: Date;
@@ -18,6 +20,8 @@ export interface ChannelInsert {
   readonly name: string;
   readonly followers?: number;
   readonly videoCount?: number;
+  readonly avatarUrl?: string | null;
+  readonly bannerUrl?: string | null;
 }
 
 export async function findByUsername(
@@ -40,18 +44,22 @@ export async function findByYoutubeId(
 
 export async function upsert(data: ChannelInsert): Promise<ChannelRow> {
   const rows = await db`
-    INSERT INTO channels (youtube_id, username, name, followers, video_count)
+    INSERT INTO channels (youtube_id, username, name, followers, video_count, avatar_url, banner_url)
     VALUES (
       ${data.youtubeId},
       ${data.username},
       ${data.name},
       ${data.followers ?? 0},
-      ${data.videoCount ?? 0}
+      ${data.videoCount ?? 0},
+      ${data.avatarUrl ?? null},
+      ${data.bannerUrl ?? null}
     )
     ON CONFLICT (youtube_id) DO UPDATE SET
       name           = EXCLUDED.name,
       followers      = EXCLUDED.followers,
       video_count    = EXCLUDED.video_count,
+      avatar_url     = COALESCE(EXCLUDED.avatar_url, channels.avatar_url),
+      banner_url     = COALESCE(EXCLUDED.banner_url, channels.banner_url),
       last_synced_at = NOW(),
       updated_at     = NOW()
     RETURNING *

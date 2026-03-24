@@ -54,6 +54,13 @@ export async function findAll(
 
 export async function create(data: MetadataInsert): Promise<MetadataRow> {
   const rows = await db.begin(async (tx) => {
+    const versionRows = await tx`
+      SELECT COALESCE(MAX(version), 0) + 1 AS next_version
+      FROM channel_metadata
+      WHERE channel_id = ${data.channelId}
+    `;
+    const nextVersion = (versionRows[0] as { next_version: number }).next_version;
+
     return tx`
       INSERT INTO channel_metadata (
         channel_id, version, overview,
@@ -61,10 +68,7 @@ export async function create(data: MetadataInsert): Promise<MetadataRow> {
       )
       VALUES (
         ${data.channelId},
-        COALESCE(
-          (SELECT MAX(version) + 1 FROM channel_metadata WHERE channel_id = ${data.channelId} FOR UPDATE),
-          1
-        ),
+        ${nextVersion},
         ${data.overview ?? null},
         ${data.associatedVideoTypes ?? null},
         ${data.category ?? "other"},

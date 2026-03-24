@@ -31,6 +31,8 @@ export interface ChannelVideosResponse {
   readonly channelName: string;
   readonly channelId: string;
   readonly handle: string;
+  readonly avatarUrl: string | null;
+  readonly bannerUrl: string | null;
   readonly totalVideos: number;
   readonly metadata: ChannelMetadataSummary | null;
   readonly videos: ReadonlyArray<VideoApiItem>;

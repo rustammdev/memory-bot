@@ -4,6 +4,7 @@ import {
   getChannelVideos,
   getChannelMetadata,
   getChannelMetadataVersions,
+  generateMetadata,
 } from "../services/channel.service";
 
 export const channelRoutes = {
@@ -27,6 +28,14 @@ export const channelRoutes = {
           queryParam(req, "channel"),
           version,
         );
+        return ok(result);
+      } catch (err) {
+        return fail(err);
+      }
+    },
+    POST: async (req: Request) => {
+      try {
+        const result = await generateMetadata(queryParam(req, "channel"));
         return ok(result);
       } catch (err) {
         return fail(err);
