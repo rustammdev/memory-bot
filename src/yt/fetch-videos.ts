@@ -1,5 +1,5 @@
 import { ExternalServiceError, NotFoundError } from "../lib/errors";
-import { parseChannelInput } from "./parse-channel";
+import { toChannelUrl } from "./parse-channel";
 import type { ChannelVideosResponse, VideoInfo } from "./types";
 
 interface YtDlpEntry {
@@ -38,7 +38,7 @@ function parseEntries(stdout: string): ReadonlyArray<YtDlpEntry> {
 export async function fetchChannelVideos(
   channelInput: string,
 ): Promise<ChannelVideosResponse> {
-  const channelUrl = parseChannelInput(channelInput);
+  const channelUrl = toChannelUrl(channelInput);
 
   const proc = Bun.spawn(
     ["yt-dlp", "--flat-playlist", "-j", channelUrl],
@@ -67,6 +67,7 @@ export async function fetchChannelVideos(
     channelId: first.playlist_channel_id,
     handle: first.playlist_uploader_id,
     totalVideos: first.n_entries,
+    metadata: null,
     videos: entries.map(toVideoInfo),
   };
 }

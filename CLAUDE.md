@@ -10,7 +10,7 @@ YouTube kanallari uchun shaxsiy AI agentlar platformasi. Har bir agent o'z kanal
 - **Language**: TypeScript (strict mode)
 - **AI Framework**: LangChain.js (`langchain`, `@langchain/core`, `@langchain/anthropic`)
 - **LLM**: Claude (Anthropic) via `@langchain/anthropic`
-- **Database**: SQLite via `bun:sqlite` (agent memory, channel config)
+- **Database**: PostgreSQL via `Bun.sql` (NOT SQLite, NOT pg, NOT postgres.js)
 - **Server**: `Bun.serve()` (NOT express)
 - **Testing**: `bun test`
 
@@ -18,35 +18,63 @@ YouTube kanallari uchun shaxsiy AI agentlar platformasi. Har bir agent o'z kanal
 
 ```
 src/
-├── agents/           # Agent factory va agent turlarini boshqarish
-│   ├── agent-factory.ts    # Agent yaratish factory
-│   ├── agent-runner.ts     # Agent ishga tushirish va chat loop
-│   └── types.ts            # Agent type definitionlar
-├── channels/         # YouTube kanal konfiguratsiyalari
-│   ├── channel-loader.ts   # Kanal ma'lumotlarini yuklash
-│   └── types.ts            # Channel type definitionlar
-├── memory/           # Xotira tizimlari
-│   ├── conversation-memory.ts  # Suhbat tarixi
-│   ├── knowledge-store.ts      # Kanal bilim bazasi
-│   └── types.ts                # Memory type definitionlar
-├── prompts/          # System promptlar va templatelar
-│   └── character-prompt.ts     # Karakter yaratish promptlari
-├── config/           # Konfiguratsiya
-│   └── index.ts                # Env va app config
-├── db/               # Database
-│   ├── schema.ts               # SQLite schema
-│   └── migrations/             # DB migratsiyalar
-└── utils/            # Yordamchi funksiyalar
-    └── index.ts
+├── index.ts                    # Entry — migrations + server start
+├── server.ts                   # Bun.serve konfiguratsiyasi
+├── routes/
+│   ├── index.ts                # Route registry
+│   └── channel.routes.ts       # Channel endpoints
+├── services/
+│   └── channel.service.ts      # Business logic (DB-first, yt-dlp fallback)
+├── repositories/               # Data access layer (1 file per table)
+│   ├── channel.repo.ts
+│   ├── video.repo.ts
+│   ├── transcript.repo.ts
+│   └── metadata.repo.ts
+├── db/
+│   ├── connection.ts           # Bun.sql PostgreSQL connection
+│   ├── migrate.ts              # Auto migration runner
+│   └── migrations/             # Sequential .sql files (001_, 002_...)
+├── lib/
+│   ├── errors.ts               # AppError hierarchy
+│   └── response.ts             # { ok, data } / { ok, error } envelope
+└── yt/                         # YouTube external service layer
+    ├── types.ts
+    ├── parse-channel.ts
+    └── fetch-videos.ts
 ```
+
+## Layered Architecture
+
+```
+Routes → Services → Repositories → Database
+                  → YT module    → yt-dlp (external)
+```
+
+- **Routes**: HTTP concern only — parse request, delegate to service, format response
+- **Services**: Business logic, validation, orchestration
+- **Repositories**: Data access — 1 file per DB table, raw SQL via Bun.sql
+- **YT module**: External service wrapper (yt-dlp subprocess)
+- **Lib**: Shared infrastructure (errors, response helpers)
+
+## Database
+
+- PostgreSQL with `Bun.sql` (tagged template queries)
+- Migrations: sequential `.sql` files in `src/db/migrations/`
+- Schema per file: `001_create_enums.sql`, `002_create_channels.sql`, etc.
+- Tables: `channels`, `videos`, `transcripts`, `channel_metadata`
+- Metadata is versioned — latest returned by default, old via separate API
 
 ## Key Concepts
 
-### Agent = Channel Personality
-Har bir YouTube kanali uchun agent:
-- **Character**: Kanal uslubiga mos shaxsiyat (system prompt)
-- **Memory**: Suhbat tarixi + kanal haqida bilimlar (persistent)
-- **Knowledge**: Kanal kontenti haqida ma'lumotlar (RAG)
+### DB-First Strategy
+1. Search PostgreSQL first
+2. If not found → fetch from yt-dlp → save to DB → return
+3. Metadata generated only after first transcript exists
+
+### Versioned Metadata
+- Each channel_metadata row has a `version` (auto-increment per channel)
+- Default API returns latest version
+- Separate endpoint for version history
 
 ### Immutability
 - NEVER mutate objects — always create new copies
@@ -55,20 +83,37 @@ Har bir YouTube kanali uchun agent:
 ## Commands
 
 ```bash
-bun run src/index.ts        # Start server
-bun test                     # Run all tests
-bun test --watch             # Watch mode
-bun run src/cli.ts           # CLI chat interface
+bun run start               # Start server (runs migrations first)
+bun run dev                 # Watch mode
+bun run migrate             # Run migrations only
+bun test                    # Run all tests
+bun test --watch            # Watch mode
+```
+
+## API Endpoints
+
+```
+GET /api/channels/videos?channel=CalebWritesCode
+GET /api/channels/metadata?channel=CalebWritesCode
+GET /api/channels/metadata?channel=CalebWritesCode&version=2
+GET /api/channels/metadata/versions?channel=CalebWritesCode
 ```
 
 ## Bun-Specific Rules
 
-- Use `bun <file>` instead of `node <file>`
-- Use `bun:sqlite` for SQLite (NOT better-sqlite3)
+- Use `Bun.sql` for PostgreSQL (NOT pg, NOT postgres.js)
 - Use `Bun.serve()` for HTTP (NOT express)
-- Use `Bun.file()` for file I/O (NOT node:fs)
+- Use `Bun.file()` for file I/O (NOT node:fs readFile/writeFile)
+- Use `Bun.spawn()` for subprocesses
 - Bun auto-loads `.env` — do NOT use dotenv
-- Use `Bun.password.hash()` for password hashing
+
+## Environment Variables
+
+```
+DATABASE_URL=postgres://user:pass@localhost:5432/memory_bot
+ANTHROPIC_API_KEY=           # Required for AI agents
+LOG_LEVEL=info               # debug | info | warn | error
+```
 
 ## Coding Standards
 
@@ -79,14 +124,6 @@ bun run src/cli.ts           # CLI chat interface
 - **Exports**: Named exports only (NO default exports)
 - **Errors**: Always handle explicitly, never swallow silently
 - **Validation**: Validate all external input at boundaries
-
-## Environment Variables
-
-```
-ANTHROPIC_API_KEY=           # Required — Claude API key
-DATABASE_PATH=./data/bot.db  # SQLite database path
-LOG_LEVEL=info               # debug | info | warn | error
-```
 
 ## Testing
 
