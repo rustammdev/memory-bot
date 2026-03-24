@@ -39,20 +39,6 @@ export async function findTranscribedVideoIds(
   return new Set(rows.map((r: { id: string }) => r.id));
 }
 
-export async function findSummariesByChannelId(
-  channelId: string,
-  limit = 50,
-): Promise<ReadonlyArray<{ title: string; summary: string }>> {
-  const rows = await db`
-    SELECT v.title, t.summary FROM transcripts t
-    JOIN videos v ON v.id = t.video_id
-    WHERE v.channel_id = ${channelId} AND t.summary IS NOT NULL
-    ORDER BY t.created_at
-    LIMIT ${limit}
-  `;
-  return rows as ReadonlyArray<{ title: string; summary: string }>;
-}
-
 export async function upsert(data: TranscriptInsert): Promise<TranscriptRow> {
   const rows = await db`
     INSERT INTO transcripts (video_id, content, summary, language)

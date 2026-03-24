@@ -1,9 +1,9 @@
-import { ValidationError } from "../lib/errors";
+import { NotFoundError } from "../lib/errors";
 import * as channelRepo from "../repositories/channel.repo";
 import * as videoRepo from "../repositories/video.repo";
 import * as metadataRepo from "../repositories/metadata.repo";
 import * as transcriptRepo from "../repositories/transcript.repo";
-import { generateChannelMetadata } from "../ai/generate-metadata";
+import { generateChannelMetadata, type GeneratedMetadata } from "../ai/generate-metadata";
 import { fetchChannelImages } from "../yt/fetch-channel-images";
 import { fetchChannelVideos } from "../yt/fetch-videos";
 import { requireChannel, resolveChannel, toApiResponse } from "./channel.helpers";
@@ -20,6 +20,31 @@ interface MetadataVersionsResponse {
 
 interface VideosFilter {
   readonly transcribedOnly?: boolean;
+}
+
+function toMetadataInsert(
+  channelId: string,
+  generated: GeneratedMetadata,
+): metadataRepo.MetadataInsert {
+  return {
+    channelId,
+    overview: generated.overview,
+    associatedVideoTypes: generated.associatedVideoTypes,
+    category: generated.category,
+    language: generated.language,
+  };
+}
+
+function saveMetadataInBackground(
+  channelId: string,
+  channelName: string,
+  videoTitles: ReadonlyArray<string>,
+): void {
+  generateChannelMetadata(channelName, videoTitles)
+    .then((generated) => metadataRepo.create(toMetadataInsert(channelId, generated)))
+    .catch((err) => {
+      console.error(`[metadata] Failed for channel ${channelId}:`, err);
+    });
 }
 
 export async function getChannelVideos(
@@ -67,6 +92,9 @@ export async function getChannelVideos(
     })),
   );
 
+  const recentTitles = ytData.videos.map((v) => v.title);
+  saveMetadataInBackground(channel.id, ytData.channelName, recentTitles);
+
   return toApiResponse(channel, videos, null);
 }
 
@@ -84,7 +112,7 @@ export async function getChannelMetadata(
   const metadata = await metadataRepo.findLatest(channel.id);
   return {
     metadata,
-    message: metadata ? undefined : "Metadata not generated yet. Needs first transcript.",
+    message: metadata ? undefined : "No metadata available yet.",
   };
 }
 
@@ -100,21 +128,12 @@ export async function generateMetadata(
   channelInput: string | null,
 ): Promise<metadataRepo.MetadataRow> {
   const channel = await requireChannel(channelInput);
+  const titles = await videoRepo.findRecentTitles(channel.id);
 
-  const summaries = await transcriptRepo.findSummariesByChannelId(channel.id);
-  if (summaries.length === 0) {
-    throw new ValidationError(
-      "No video summaries found. Fetch transcripts first.",
-    );
+  if (titles.length === 0) {
+    throw new NotFoundError("No videos found. Sync the channel first.");
   }
 
-  const generated = await generateChannelMetadata(channel.name, summaries);
-
-  return metadataRepo.create({
-    channelId: channel.id,
-    overview: generated.overview,
-    associatedVideoTypes: generated.associatedVideoTypes,
-    category: generated.category,
-    language: generated.language,
-  });
+  const generated = await generateChannelMetadata(channel.name, titles);
+  return metadataRepo.create(toMetadataInsert(channel.id, generated));
 }

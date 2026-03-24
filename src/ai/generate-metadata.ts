@@ -2,11 +2,6 @@ import { chatCompletion, parseJsonResponse } from "./client";
 import { CHANNEL_CATEGORIES, CHANNEL_LANGUAGES } from "../lib/enums";
 import type { ChannelCategory, ChannelLanguage } from "../lib/enums";
 
-export interface VideoSummary {
-  readonly title: string;
-  readonly summary: string;
-}
-
 export interface GeneratedMetadata {
   readonly overview: string;
   readonly associatedVideoTypes: string;
@@ -14,40 +9,40 @@ export interface GeneratedMetadata {
   readonly language: string;
 }
 
-const MAX_SUMMARIES = 50;
+export const TITLE_LIMIT = 15;
 
 export async function generateChannelMetadata(
   channelName: string,
-  summaries: ReadonlyArray<VideoSummary>,
+  videoTitles: ReadonlyArray<string>,
 ): Promise<GeneratedMetadata> {
-  const limited = summaries.slice(0, MAX_SUMMARIES);
-  const summaryBlock = limited
-    .map((s, i) => `${i + 1}. "${s.title}"\n${s.summary}`)
-    .join("\n\n");
+  const titles = videoTitles.slice(0, TITLE_LIMIT);
+  const titleBlock = titles.map((t, i) => `${i + 1}. ${t}`).join("\n");
 
-  const content = await chatCompletion([
-    {
-      role: "system",
-      content: `You analyze YouTube channels based on their video summaries. Return ONLY valid JSON with these exact fields:
+  const content = await chatCompletion(
+    [
+      {
+        role: "system",
+        content: `You analyze YouTube channels based on their recent video titles. Return ONLY valid JSON with these exact fields:
 
-    {
-      "overview": "Detailed channel description based on actual content. Mention specific topics, recurring themes, and the creator's perspective. 3-5 sentences.",
-      "associatedVideoTypes": "Comma-separated list of video types/formats this channel produces (e.g. 'tutorials, explainers, reviews, deep-dives')",
-      "category": "ONE of: ${CHANNEL_CATEGORIES.join(", ")}",
-      "language": "Primary language code, ONE of: ${CHANNEL_LANGUAGES.join(", ")}"
-    }
+      {
+        "overview": "Channel description based on video titles. Mention specific topics, recurring themes, and the creator's focus. 3-5 sentences.",
+        "associatedVideoTypes": "Comma-separated list of video types/formats (e.g. 'tutorials, explainers, reviews, deep-dives')",
+        "category": "ONE of: ${CHANNEL_CATEGORIES.join(", ")}",
+        "language": "Primary language code, ONE of: ${CHANNEL_LANGUAGES.join(", ")}"
+      }
 
-    Be specific and factual. Base everything on the actual video summaries provided.`,
-    },
-    {
-      role: "user",
-      content: `Channel: "${channelName}"
+      Be specific and factual. Infer only from the titles provided.`,
+      },
+      {
+        role: "user",
+        content: `Channel: "${channelName}"
 
-Video summaries (${limited.length} of ${summaries.length} videos):
-
-${summaryBlock}`,
-    },
-  ]);
+        Recent video titles (${titles.length}):
+        ${titleBlock}`,
+      },
+    ],
+    { maxTokens: 500 },
+  );
 
   const parsed = parseJsonResponse<GeneratedMetadata>(content);
 

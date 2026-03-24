@@ -79,6 +79,19 @@ export async function bulkUpsert(
   return results;
 }
 
+export async function findRecentTitles(
+  channelId: string,
+  limit = 15,
+): Promise<ReadonlyArray<string>> {
+  const rows = await db`
+    SELECT title FROM videos
+    WHERE channel_id = ${channelId}
+    ORDER BY synced_at DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((r: { title: string }) => r.title);
+}
+
 export async function getMaxViewCount(channelId: string): Promise<number> {
   const rows = await db`
     SELECT COALESCE(MAX(view_count), 0) AS max_views
