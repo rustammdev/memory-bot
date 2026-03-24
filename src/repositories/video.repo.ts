@@ -78,3 +78,11 @@ export async function bulkUpsert(
   });
   return results;
 }
+
+export async function getMaxViewCount(channelId: string): Promise<number> {
+  const rows = await db`
+    SELECT COALESCE(MAX(view_count), 0) AS max_views
+    FROM videos WHERE channel_id = ${channelId}
+  `;
+  return (rows[0] as { max_views: number }).max_views;
+}

@@ -4,12 +4,14 @@ import * as transcriptRepo from "../repositories/transcript.repo";
 import * as videoRepo from "../repositories/video.repo";
 import { summarizeTranscript } from "../ai/summarize";
 import { fetchTranscript } from "../yt/fetch-transcript";
+import { ingestTranscript } from "../vector/ingest";
 
 interface TranscriptResponse {
   readonly videoId: string;
   readonly language: string;
   readonly content: string;
   readonly summary: string | null;
+  readonly vectorized: boolean;
   readonly createdAt: Date;
 }
 
@@ -22,6 +24,7 @@ function toResponse(
     language: row.language,
     content: row.content,
     summary: row.summary,
+    vectorized: row.vectorized,
     createdAt: row.created_at,
   };
 }
@@ -66,11 +69,25 @@ export async function fetchAndSaveTranscript(
   const raw = await fetchTranscript(youtubeVideoId, language);
   const summary = await summarizeTranscript(video.title, raw.text);
 
-  const saved = await transcriptRepo.upsert({
+  const [saved, maxViews] = await Promise.all([
+    transcriptRepo.upsert({
+      videoId: video.id,
+      content: raw.text,
+      summary,
+      language: raw.language,
+    }),
+    videoRepo.getMaxViewCount(video.channel_id),
+  ]);
+
+  const importance = maxViews > 0 ? video.view_count / maxViews : 0;
+  ingestTranscript({
+    channelId: video.channel_id,
     videoId: video.id,
+    transcriptId: saved.id,
     content: raw.text,
-    summary,
-    language: raw.language,
+    importance,
+  }).catch((err) => {
+    console.error(`[vectorize] Failed for transcript ${saved.id}:`, err);
   });
 
   return toResponse(saved, youtubeVideoId);

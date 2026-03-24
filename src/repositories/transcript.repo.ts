@@ -6,6 +6,7 @@ export interface TranscriptRow {
   readonly content: string;
   readonly summary: string | null;
   readonly language: string;
+  readonly vectorized: boolean;
   readonly created_at: Date;
 }
 
