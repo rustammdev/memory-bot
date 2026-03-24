@@ -1,106 +1,102 @@
+# Memory Bot — YouTube Channel AI Agents
 
-Default to using Bun instead of Node.js.
+## Project Overview
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+YouTube kanallari uchun shaxsiy AI agentlar platformasi. Har bir agent o'z kanaliga mos xarakter, bilim va xotiraga ega bo'ladi. LangChain + Anthropic Claude asosida qurilgan.
 
-## APIs
+## Tech Stack
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+- **Runtime**: Bun (NOT Node.js)
+- **Language**: TypeScript (strict mode)
+- **AI Framework**: LangChain.js (`langchain`, `@langchain/core`, `@langchain/anthropic`)
+- **LLM**: Claude (Anthropic) via `@langchain/anthropic`
+- **Database**: SQLite via `bun:sqlite` (agent memory, channel config)
+- **Server**: `Bun.serve()` (NOT express)
+- **Testing**: `bun test`
+
+## Architecture
+
+```
+src/
+├── agents/           # Agent factory va agent turlarini boshqarish
+│   ├── agent-factory.ts    # Agent yaratish factory
+│   ├── agent-runner.ts     # Agent ishga tushirish va chat loop
+│   └── types.ts            # Agent type definitionlar
+├── channels/         # YouTube kanal konfiguratsiyalari
+│   ├── channel-loader.ts   # Kanal ma'lumotlarini yuklash
+│   └── types.ts            # Channel type definitionlar
+├── memory/           # Xotira tizimlari
+│   ├── conversation-memory.ts  # Suhbat tarixi
+│   ├── knowledge-store.ts      # Kanal bilim bazasi
+│   └── types.ts                # Memory type definitionlar
+├── prompts/          # System promptlar va templatelar
+│   └── character-prompt.ts     # Karakter yaratish promptlari
+├── config/           # Konfiguratsiya
+│   └── index.ts                # Env va app config
+├── db/               # Database
+│   ├── schema.ts               # SQLite schema
+│   └── migrations/             # DB migratsiyalar
+└── utils/            # Yordamchi funksiyalar
+    └── index.ts
+```
+
+## Key Concepts
+
+### Agent = Channel Personality
+Har bir YouTube kanali uchun agent:
+- **Character**: Kanal uslubiga mos shaxsiyat (system prompt)
+- **Memory**: Suhbat tarixi + kanal haqida bilimlar (persistent)
+- **Knowledge**: Kanal kontenti haqida ma'lumotlar (RAG)
+
+### Immutability
+- NEVER mutate objects — always create new copies
+- Use `Readonly<T>` and `ReadonlyArray<T>` for type safety
+
+## Commands
+
+```bash
+bun run src/index.ts        # Start server
+bun test                     # Run all tests
+bun test --watch             # Watch mode
+bun run src/cli.ts           # CLI chat interface
+```
+
+## Bun-Specific Rules
+
+- Use `bun <file>` instead of `node <file>`
+- Use `bun:sqlite` for SQLite (NOT better-sqlite3)
+- Use `Bun.serve()` for HTTP (NOT express)
+- Use `Bun.file()` for file I/O (NOT node:fs)
+- Bun auto-loads `.env` — do NOT use dotenv
+- Use `Bun.password.hash()` for password hashing
+
+## Coding Standards
+
+- **File size**: 200-400 lines typical, 800 max
+- **Function size**: <50 lines
+- **Nesting**: max 4 levels deep
+- **Naming**: camelCase for variables/functions, PascalCase for types/classes
+- **Exports**: Named exports only (NO default exports)
+- **Errors**: Always handle explicitly, never swallow silently
+- **Validation**: Validate all external input at boundaries
+
+## Environment Variables
+
+```
+ANTHROPIC_API_KEY=           # Required — Claude API key
+DATABASE_PATH=./data/bot.db  # SQLite database path
+LOG_LEVEL=info               # debug | info | warn | error
+```
 
 ## Testing
 
-Use `bun test` to run tests.
+- Minimum 80% coverage
+- TDD workflow: RED → GREEN → REFACTOR
+- Test files: `*.test.ts` next to source files
+- Use `bun:test` (NOT jest, vitest)
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
+## Git
 
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
-
-## Frontend
-
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
-
-Server:
-
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
-
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
-
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
-
-With the following `frontend.tsx`:
-
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
-
-// import .css files directly and it works
-import './index.css';
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+- Commits in English: `type(scope): description`
+- Branch naming: `feat/`, `fix/`, `refactor/`
+- PR titles in English with full description
