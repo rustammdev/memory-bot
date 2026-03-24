@@ -23,9 +23,8 @@ export interface ChannelInsert {
 export async function findByUsername(
   username: string,
 ): Promise<ChannelRow | null> {
-  const handle = username.startsWith("@") ? username : `@${username}`;
   const rows = await db`
-    SELECT * FROM channels WHERE username = ${handle}
+    SELECT * FROM channels WHERE username = ${username}
   `;
   return (rows[0] as ChannelRow) ?? null;
 }
@@ -62,11 +61,13 @@ export async function upsert(data: ChannelInsert): Promise<ChannelRow> {
 
 export async function search(
   query: string,
+  limit = 50,
 ): Promise<ReadonlyArray<ChannelRow>> {
   const pattern = `%${query}%`;
   return db`
     SELECT * FROM channels
     WHERE username ILIKE ${pattern} OR name ILIKE ${pattern}
     ORDER BY name
+    LIMIT ${limit}
   ` as Promise<ReadonlyArray<ChannelRow>>;
 }

@@ -1,51 +1,24 @@
-import { ValidationError } from "../lib/errors";
+import { NotFoundError } from "../lib/errors";
 import * as channelRepo from "../repositories/channel.repo";
 import * as videoRepo from "../repositories/video.repo";
 import * as metadataRepo from "../repositories/metadata.repo";
 import { fetchChannelVideos } from "../yt/fetch-videos";
-import { extractUsername } from "../yt/parse-channel";
+import { resolveChannel, toApiResponse } from "./channel.helpers";
 import type { ChannelVideosResponse } from "../yt/types";
 
-function toApiResponse(
-  channel: channelRepo.ChannelRow,
-  videos: ReadonlyArray<videoRepo.VideoRow>,
-  metadata: metadataRepo.MetadataRow | null,
-): ChannelVideosResponse {
-  return {
-    channelName: channel.name,
-    channelId: channel.youtube_id,
-    handle: channel.username,
-    totalVideos: channel.video_count,
-    metadata: metadata
-      ? {
-          version: metadata.version,
-          overview: metadata.overview,
-          associatedVideoTypes: metadata.associated_video_types,
-          category: metadata.category,
-          language: metadata.language,
-        }
-      : null,
-    videos: videos.map((v) => ({
-      id: v.youtube_video_id,
-      title: v.title,
-      url: v.url,
-      viewCount: v.view_count,
-      duration: v.duration_sec,
-      durationFormatted: v.duration_formatted,
-    })),
-  };
+interface MetadataResponse {
+  readonly metadata: metadataRepo.MetadataRow | null;
+  readonly message?: string;
+}
+
+interface MetadataVersionsResponse {
+  readonly versions: ReadonlyArray<metadataRepo.MetadataRow>;
 }
 
 export async function getChannelVideos(
   channelInput: string | null,
 ): Promise<ChannelVideosResponse> {
-  if (!channelInput || channelInput.trim().length === 0) {
-    throw new ValidationError("\"channel\" query parameter is required");
-  }
-
-  const username = extractUsername(channelInput);
-
-  const existing = await channelRepo.findByUsername(username);
+  const existing = await resolveChannel(channelInput);
   if (existing) {
     const [videos, metadata] = await Promise.all([
       videoRepo.findByChannelId(existing.id),
@@ -54,7 +27,7 @@ export async function getChannelVideos(
     return toApiResponse(existing, videos, metadata);
   }
 
-  const ytData = await fetchChannelVideos(channelInput);
+  const ytData = await fetchChannelVideos(channelInput!);
 
   const channel = await channelRepo.upsert({
     youtubeId: ytData.channelId,
@@ -63,7 +36,7 @@ export async function getChannelVideos(
     videoCount: ytData.totalVideos,
   });
 
-  await videoRepo.bulkUpsert(
+  const videos = await videoRepo.bulkUpsert(
     ytData.videos.map((v) => ({
       channelId: channel.id,
       youtubeVideoId: v.id,
@@ -75,22 +48,16 @@ export async function getChannelVideos(
     })),
   );
 
-  const videos = await videoRepo.findByChannelId(channel.id);
   return toApiResponse(channel, videos, null);
 }
 
 export async function getChannelMetadata(
   channelInput: string | null,
   version?: number,
-) {
-  if (!channelInput || channelInput.trim().length === 0) {
-    throw new ValidationError("\"channel\" query parameter is required");
-  }
-
-  const username = extractUsername(channelInput);
-  const channel = await channelRepo.findByUsername(username);
+): Promise<MetadataResponse> {
+  const channel = await resolveChannel(channelInput);
   if (!channel) {
-    return { metadata: null, message: "Channel not found. Sync videos first." };
+    throw new NotFoundError("Channel not found. Sync videos first.");
   }
 
   if (version !== undefined) {
@@ -107,15 +74,10 @@ export async function getChannelMetadata(
 
 export async function getChannelMetadataVersions(
   channelInput: string | null,
-) {
-  if (!channelInput || channelInput.trim().length === 0) {
-    throw new ValidationError("\"channel\" query parameter is required");
-  }
-
-  const username = extractUsername(channelInput);
-  const channel = await channelRepo.findByUsername(username);
+): Promise<MetadataVersionsResponse> {
+  const channel = await resolveChannel(channelInput);
   if (!channel) {
-    return { versions: [] };
+    throw new NotFoundError("Channel not found. Sync videos first.");
   }
 
   const versions = await metadataRepo.findAll(channel.id);

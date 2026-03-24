@@ -1,13 +1,10 @@
 import { ok, fail } from "../lib/response";
+import { queryParam, queryParamInt } from "../lib/request";
 import {
   getChannelVideos,
   getChannelMetadata,
   getChannelMetadataVersions,
 } from "../services/channel.service";
-
-function queryParam(req: Request, key: string): string | null {
-  return new URL(req.url).searchParams.get(key);
-}
 
 export const channelRoutes = {
   "/api/channels/videos": {
@@ -24,8 +21,7 @@ export const channelRoutes = {
   "/api/channels/metadata": {
     GET: async (req: Request) => {
       try {
-        const versionRaw = queryParam(req, "version");
-        const version = versionRaw ? Number(versionRaw) : undefined;
+        const version = queryParamInt(req, "version");
         const result = await getChannelMetadata(
           queryParam(req, "channel"),
           version,

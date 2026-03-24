@@ -53,23 +53,25 @@ export async function findAll(
 }
 
 export async function create(data: MetadataInsert): Promise<MetadataRow> {
-  const rows = await db`
-    INSERT INTO channel_metadata (
-      channel_id, version, overview,
-      associated_video_types, category, language
-    )
-    VALUES (
-      ${data.channelId},
-      COALESCE(
-        (SELECT MAX(version) + 1 FROM channel_metadata WHERE channel_id = ${data.channelId}),
-        1
-      ),
-      ${data.overview ?? null},
-      ${data.associatedVideoTypes ?? null},
-      ${data.category ?? "other"},
-      ${data.language ?? "en"}
-    )
-    RETURNING *
-  `;
+  const rows = await db.begin(async (tx) => {
+    return tx`
+      INSERT INTO channel_metadata (
+        channel_id, version, overview,
+        associated_video_types, category, language
+      )
+      VALUES (
+        ${data.channelId},
+        COALESCE(
+          (SELECT MAX(version) + 1 FROM channel_metadata WHERE channel_id = ${data.channelId} FOR UPDATE),
+          1
+        ),
+        ${data.overview ?? null},
+        ${data.associatedVideoTypes ?? null},
+        ${data.category ?? "other"},
+        ${data.language ?? "en"}
+      )
+      RETURNING *
+    `;
+  });
   return rows[0] as MetadataRow;
 }

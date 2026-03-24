@@ -45,12 +45,13 @@ export async function findByYoutubeVideoId(
 
 export async function bulkUpsert(
   videos: ReadonlyArray<VideoInsert>,
-): Promise<void> {
-  if (videos.length === 0) return;
+): Promise<ReadonlyArray<VideoRow>> {
+  if (videos.length === 0) return [];
 
+  const results: VideoRow[] = [];
   await db.begin(async (tx) => {
     for (const v of videos) {
-      await tx`
+      const rows = await tx`
         INSERT INTO videos (
           channel_id, youtube_video_id, title, url,
           view_count, duration_sec, duration_formatted
@@ -70,7 +71,10 @@ export async function bulkUpsert(
           duration_sec       = EXCLUDED.duration_sec,
           duration_formatted = EXCLUDED.duration_formatted,
           synced_at          = NOW()
+        RETURNING *
       `;
+      results.push(rows[0] as VideoRow);
     }
   });
+  return results;
 }

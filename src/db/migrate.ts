@@ -13,7 +13,7 @@ export async function runMigrations() {
   `;
 
   const applied = await db`SELECT name FROM _migrations ORDER BY name`;
-  const appliedSet = new Set(applied.map((r) => r.name as string));
+  const appliedSet = new Set(applied.map((r: { name: string }) => r.name));
 
   const glob = new Bun.Glob("*.sql");
   const files = Array.from(glob.scanSync(MIGRATIONS_DIR)).sort();
