@@ -10,6 +10,9 @@ import { requireChannel, resolveChannel, toApiResponse } from "./channel.helpers
 import type { ChannelVideosResponse } from "../yt/types";
 
 interface MetadataResponse {
+  readonly channelName: string;
+  readonly avatarUrl: string | null;
+  readonly bannerUrl: string | null;
   readonly metadata: metadataRepo.MetadataRow | null;
   readonly message?: string;
 }
@@ -104,13 +107,20 @@ export async function getChannelMetadata(
 ): Promise<MetadataResponse> {
   const channel = await requireChannel(channelInput);
 
+  const base = {
+    channelName: channel.name,
+    avatarUrl: channel.avatar_url,
+    bannerUrl: channel.banner_url,
+  };
+
   if (version !== undefined) {
     const metadata = await metadataRepo.findByVersion(channel.id, version);
-    return { metadata };
+    return { ...base, metadata };
   }
 
   const metadata = await metadataRepo.findLatest(channel.id);
   return {
+    ...base,
     metadata,
     message: metadata ? undefined : "No metadata available yet.",
   };
