@@ -79,6 +79,28 @@ export async function bulkUpsert(
   return results;
 }
 
+export async function searchByChannelId(
+  channelId: string,
+  query?: string,
+  limit = 20,
+): Promise<ReadonlyArray<VideoRow>> {
+  if (query) {
+    const pattern = `%${query}%`;
+    return db`
+      SELECT * FROM videos
+      WHERE channel_id = ${channelId} AND title ILIKE ${pattern}
+      ORDER BY synced_at DESC
+      LIMIT ${limit}
+    ` as Promise<ReadonlyArray<VideoRow>>;
+  }
+  return db`
+    SELECT * FROM videos
+    WHERE channel_id = ${channelId}
+    ORDER BY synced_at DESC
+    LIMIT ${limit}
+  ` as Promise<ReadonlyArray<VideoRow>>;
+}
+
 export async function findRecentTitles(
   channelId: string,
   limit = 15,
