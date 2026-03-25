@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memory Bot — API Tester</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+      background: #0a0a0f;
+      color: #e0e0e0;
+      padding: 16px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 20px;
+      color: #7c8aff;
+      margin-bottom: 16px;
+      letter-spacing: 1px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .card {
+      background: #12121a;
+      border: 1px solid #1e1e2e;
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #c0c8ff;
+    }
+
+    .method-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+      letter-spacing: 0.5px;
+    }
+
+    .method-get { background: #1a3a2a; color: #4ade80; }
+    .method-post { background: #3a2a1a; color: #fbbf24; }
+
+    .endpoint {
+      font-size: 11px;
+      color: #666;
+      word-break: break-all;
+    }
+
+    .fields {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .field-row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .field-row label {
+      font-size: 11px;
+      color: #888;
+      min-width: 60px;
+      flex-shrink: 0;
+    }
+
+    input, textarea {
+      background: #1a1a28;
+      border: 1px solid #2a2a3a;
+      color: #e0e0e0;
+      border-radius: 4px;
+      padding: 5px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      width: 100%;
+    }
+
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #7c8aff;
+    }
+
+    textarea { resize: vertical; min-height: 60px; }
+
+    .btn {
+      background: #7c8aff;
+      color: #0a0a0f;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .result-box {
+      background: #0d0d15;
+      border: 1px solid #1e1e2e;
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 11px;
+      max-height: 220px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      flex-grow: 1;
+      min-height: 80px;
+      color: #aaa;
+    }
+
+    .result-box.success { border-color: #2a4a2a; }
+    .result-box.error { border-color: #4a2a2a; color: #ff6b6b; }
+
+    .status-line {
+      font-size: 10px;
+      display: flex;
+      justify-content: space-between;
+      color: #555;
+    }
+
+    /* Chat card spans full width */
+    .card-chat {
+      grid-column: 1 / -1;
+    }
+
+    .chat-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .chat-messages {
+      background: #0d0d15;
+      border: 1px solid #1e1e2e;
+      border-radius: 4px;
+      padding: 10px;
+      max-height: 300px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 200px;
+    }
+
+    .msg {
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      max-width: 85%;
+      line-height: 1.4;
+    }
+
+    .msg-user {
+      background: #1a2a4a;
+      color: #a0b4ff;
+      align-self: flex-end;
+    }
+
+    .msg-ai {
+      background: #1a1a28;
+      color: #ccc;
+      align-self: flex-start;
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .chat-input-row input { flex-grow: 1; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<h1>MEMORY BOT — API TESTER</h1>
+
+<div class="grid">
+
+  <!-- 1. Channel Videos -->
+  <div class="card">
+    <div class="card-header">
+      <span class="method-badge method-get">GET</span>
+      <span class="card-title">Channel Videos</span>
+    </div>
+    <div class="endpoint">/api/channels/videos</div>
+    <div class="fields">
+      <div class="field-row">
+        <label>channel</label>
+        <input id="cv-channel" value="CalebWritesCode" />
+      </div>
+      <div class="field-row">
+        <label>transcribed</label>
+        <input id="cv-transcribed" placeholder="true / false" />
+      </div>
+    </div>
+    <button class="btn" onclick="getChannelVideos()">Send</button>
+    <div class="status-line"><span id="cv-status"></span><span id="cv-time"></span></div>
+    <div class="result-box" id="cv-result">—</div>
+  </div>
+
+  <!-- 2. Channel Metadata -->
+  <div class="card">
+    <div class="card-header">
+      <span class="method-badge method-get">GET</span>
+      <span class="card-title">Channel Metadata</span>
+    </div>
+    <div class="endpoint">/api/channels/metadata</div>
+    <div class="fields">
+      <div class="field-row">
+        <label>channel</label>
+        <input id="cm-channel" value="CalebWritesCode" />
+      </div>
+      <div class="field-row">
+        <label>version</label>
+        <input id="cm-version" placeholder="optional" />
+      </div>
+    </div>
+    <button class="btn" onclick="getChannelMetadata()">Send</button>
+    <div class="status-line"><span id="cm-status"></span><span id="cm-time"></span></div>
+    <div class="result-box" id="cm-result">—</div>
+  </div>
+
+  <!-- 3. Generate Metadata -->
+  <div class="card">
+    <div class="card-header">
+      <span class="method-badge method-post">POST</span>
+      <span class="card-title">Generate Metadata</span>
+    </div>
+    <div class="endpoint">/api/channels/metadata</div>
+    <div class="fields">
+      <div class="field-row">
+        <label>channel</label>
+        <input id="gm-channel" value="CalebWritesCode" />
+      </div>
+      <div class="field-row" style="gap: 6px;">
+        <label>force</label>
+        <input type="checkbox" id="gm-force" style="width: auto;" />
+        <span style="font-size: 10px; color: #666;">Qayta generatsiya</span>
+      </div>
+    </div>
+    <button class="btn" onclick="generateMetadata()">Send</button>
+    <div class="status-line"><span id="gm-status"></span><span id="gm-time"></span></div>
+    <div class="result-box" id="gm-result">—</div>
+  </div>
+
+  <!-- 4. Metadata Versions -->
+  <div class="card">
+    <div class="card-header">
+      <span class="method-badge method-get">GET</span>
+      <span class="card-title">Metadata Versions</span>
+    </div>
+    <div class="endpoint">/api/channels/metadata/versions</div>
+    <div class="fields">
+      <div class="field-row">
+        <label>channel</label>
+        <input id="mv-channel" value="CalebWritesCode" />
+      </div>
+    </div>
+    <button class="btn" onclick="getMetadataVersions()">Send</button>
+    <div class="status-line"><span id="mv-status"></span><span id="mv-time"></span></div>
+    <div class="result-box" id="mv-result">—</div>
+  </div>
+
+  <!-- 5. Get Transcript -->
+  <div class="card">
+    <div class="card-header">
+      <span class="method-badge method-get">GET</span>
+      <span class="card-title">Get Transcript</span>
+    </div>
+    <div class="endpoint">/api/transcripts</div>
+    <div class="fields">
+      <div class="field-row">
+        <label>videoId</label>
+        <input id="gt-videoId" placeholder="dQw4w9WgXcQ" />
+      </div>
+      <div class="field-row">
+        <label>lang</label>
+        <input id="gt-lang" placeholder="en (optional)" />
+      </div>
+    </div>
+    <button class="btn" onclick="getTranscript()">Send</button>
+    <div class="status-line"><span id="gt-status"></span><span id="gt-time"></span></div>
+    <div class="result-box" id="gt-result">—</div>
+  </div>
+
+  <!-- 6. Fetch Transcript -->
+  <div class="card">
+    <div class="card-header">
+      <span class="method-badge method-post">POST</span>
+      <span class="card-title">Fetch Transcript</span>
+    </div>
+    <div class="endpoint">/api/transcripts</div>
+    <div class="fields">
+      <div class="field-row">
+        <label>videoId</label>
+        <input id="ft-videoId" placeholder="dQw4w9WgXcQ" />
+      </div>
+      <div class="field-row">
+        <label>lang</label>
+        <input id="ft-lang" placeholder="en (optional)" />
+      </div>
+      <div class="field-row" style="gap: 6px;">
+        <label>force</label>
+        <input type="checkbox" id="ft-force" style="width: auto;" />
+        <span style="font-size: 10px; color: #666;">Qayta yuklash</span>
+      </div>
+    </div>
+    <button class="btn" onclick="fetchTranscript()">Send</button>
+    <div class="status-line"><span id="ft-status"></span><span id="ft-time"></span></div>
+    <div class="result-box" id="ft-result">—</div>
+  </div>
+
+  <!-- 7. Semantic Search -->
+  <div class="card">
+    <div class="card-header">
+      <span class="method-badge method-get">GET</span>
+      <span class="card-title">Semantic Search</span>
+    </div>
+    <div class="endpoint">/api/search</div>
+    <div class="fields">
+      <div class="field-row">
+        <label>channel</label>
+        <input id="ss-channel" value="CalebWritesCode" />
+      </div>
+      <div class="field-row">
+        <label>query</label>
+        <input id="ss-q" placeholder="react hooks" />
+      </div>
+      <div class="field-row">
+        <label>limit</label>
+        <input id="ss-limit" placeholder="5" />
+      </div>
+    </div>
+    <button class="btn" onclick="semanticSearch()">Send</button>
+    <div class="status-line"><span id="ss-status"></span><span id="ss-time"></span></div>
+    <div class="result-box" id="ss-result">—</div>
+  </div>
+
+  <!-- 8. Chat Memories -->
+  <div class="card">
+    <div class="card-header">
+      <span class="method-badge method-get">GET</span>
+      <span class="card-title">Chat Memories</span>
+    </div>
+    <div class="endpoint">/api/chat/memories</div>
+    <div class="fields">
+      <div class="field-row">
+        <label>channel</label>
+        <input id="mem-channel" value="CalebWritesCode" />
+      </div>
+      <div class="field-row">
+        <label>userId</label>
+        <input id="mem-userId" value="user-123" />
+      </div>
+    </div>
+    <button class="btn" onclick="getChatMemories()">Send</button>
+    <div class="status-line"><span id="mem-status"></span><span id="mem-time"></span></div>
+    <div class="result-box" id="mem-result">—</div>
+  </div>
+
+  <!-- placeholder for grid alignment -->
+  <div></div>
+
+  <!-- 9. AI Chat — full width -->
+  <div class="card card-chat">
+    <div class="card-header">
+      <span class="method-badge method-post">POST</span>
+      <span class="card-title">AI Chat</span>
+    </div>
+    <div class="endpoint">/api/chat</div>
+    <div class="fields" style="flex-direction: row; gap: 8px;">
+      <div class="field-row" style="flex: 1;">
+        <label>channel</label>
+        <input id="chat-channel" value="CalebWritesCode" />
+      </div>
+      <div class="field-row" style="flex: 1;">
+        <label>userId</label>
+        <input id="chat-userId" value="user-123" />
+      </div>
+    </div>
+    <div class="chat-layout">
+      <div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div style="margin-top: 6px;">
+          <div class="chat-input-row">
+            <input id="chat-input" placeholder="Xabar yozing..." onkeydown="if(event.key==='Enter')sendChat()" />
+            <button class="btn" onclick="sendChat()" id="chat-send-btn">Send</button>
+          </div>
+          <div class="status-line" style="margin-top: 4px;"><span id="chat-status"></span><span id="chat-time"></span></div>
+        </div>
+      </div>
+      <div class="result-box" id="chat-raw" style="max-height: 340px;">Raw response will appear here</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const BASE = '';
+
+const chatHistory = [];
+
+async function apiCall(method, url, body) {
+  const start = performance.now();
+  try {
+    const opts = { method, headers: {} };
+    if (body) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(url, opts);
+    const data = await res.json();
+    const ms = Math.round(performance.now() - start);
+    return { data, status: res.status, ms, ok: res.ok };
+  } catch (err) {
+    const ms = Math.round(performance.now() - start);
+    return { data: { error: err.message }, status: 0, ms, ok: false };
+  }
+}
+
+function showResult(prefix, result) {
+  const el = document.getElementById(`${prefix}-result`);
+  const statusEl = document.getElementById(`${prefix}-status`);
+  const timeEl = document.getElementById(`${prefix}-time`);
+
+  el.textContent = JSON.stringify(result.data, null, 2);
+  el.className = 'result-box ' + (result.ok ? 'success' : 'error');
+  statusEl.textContent = `Status: ${result.status}`;
+  timeEl.textContent = `${result.ms}ms`;
+}
+
+function qs(params) {
+  const filtered = Object.entries(params).filter(([, v]) => v);
+  return filtered.length ? '?' + new URLSearchParams(filtered).toString() : '';
+}
+
+async function getChannelVideos() {
+  const params = {
+    channel: document.getElementById('cv-channel').value,
+    transcribed: document.getElementById('cv-transcribed').value,
+  };
+  showResult('cv', await apiCall('GET', `${BASE}/api/channels/videos${qs(params)}`));
+}
+
+async function getChannelMetadata() {
+  const params = {
+    channel: document.getElementById('cm-channel').value,
+    version: document.getElementById('cm-version').value,
+  };
+  showResult('cm', await apiCall('GET', `${BASE}/api/channels/metadata${qs(params)}`));
+}
+
+async function generateMetadata() {
+  const channel = document.getElementById('gm-channel').value;
+  const force = document.getElementById('gm-force').checked;
+  const params = { channel };
+  if (force) params.force = 'true';
+  showResult('gm', await apiCall('POST', `${BASE}/api/channels/metadata${qs(params)}`));
+}
+
+async function getMetadataVersions() {
+  const channel = document.getElementById('mv-channel').value;
+  showResult('mv', await apiCall('GET', `${BASE}/api/channels/metadata/versions?channel=${encodeURIComponent(channel)}`));
+}
+
+async function getTranscript() {
+  const params = {
+    videoId: document.getElementById('gt-videoId').value,
+    lang: document.getElementById('gt-lang').value,
+  };
+  showResult('gt', await apiCall('GET', `${BASE}/api/transcripts${qs(params)}`));
+}
+
+async function fetchTranscript() {
+  const params = {
+    videoId: document.getElementById('ft-videoId').value,
+    lang: document.getElementById('ft-lang').value,
+  };
+  if (document.getElementById('ft-force').checked) params.force = 'true';
+  showResult('ft', await apiCall('POST', `${BASE}/api/transcripts${qs(params)}`));
+}
+
+async function semanticSearch() {
+  const params = {
+    channel: document.getElementById('ss-channel').value,
+    q: document.getElementById('ss-q').value,
+    limit: document.getElementById('ss-limit').value,
+  };
+  showResult('ss', await apiCall('GET', `${BASE}/api/search${qs(params)}`));
+}
+
+async function getChatMemories() {
+  const params = {
+    channel: document.getElementById('mem-channel').value,
+    userId: document.getElementById('mem-userId').value,
+  };
+  showResult('mem', await apiCall('GET', `${BASE}/api/chat/memories${qs(params)}`));
+}
+
+function addChatBubble(role, text) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = `msg msg-${role === 'user' ? 'user' : 'ai'}`;
+  div.textContent = text;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const message = input.value.trim();
+  if (!message) return;
+
+  const channel = document.getElementById('chat-channel').value;
+  const userId = document.getElementById('chat-userId').value;
+
+  input.value = '';
+  addChatBubble('user', message);
+
+  const btn = document.getElementById('chat-send-btn');
+  btn.disabled = true;
+  btn.textContent = '...';
+  document.getElementById('chat-status').textContent = 'Loading...';
+
+  const body = { channel, userId, message, history: [...chatHistory] };
+  const result = await apiCall('POST', `${BASE}/api/chat`, body);
+
+  btn.disabled = false;
+  btn.textContent = 'Send';
+
+  document.getElementById('chat-raw').textContent = JSON.stringify(result.data, null, 2);
+  document.getElementById('chat-raw').className = 'result-box ' + (result.ok ? 'success' : 'error');
+  document.getElementById('chat-status').textContent = `Status: ${result.status}`;
+  document.getElementById('chat-time').textContent = `${result.ms}ms`;
+
+  if (result.ok && result.data?.data) {
+    const reply = result.data.data.reply || JSON.stringify(result.data.data);
+    addChatBubble('ai', reply);
+    chatHistory.push({ role: 'user', content: message });
+    chatHistory.push({ role: 'assistant', content: reply });
+  } else {
+    addChatBubble('ai', 'Error: ' + (result.data?.error || 'Unknown error'));
+  }
+}
+</script>
+
+</body>
+</html>

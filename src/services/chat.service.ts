@@ -1,7 +1,10 @@
 import { requireChannel } from "./channel.helpers";
 import { getChannelAgent } from "../agent/create";
 import { recallMemories, saveConversation } from "../memory/client";
+import { createLogger } from "../lib/logger";
 import type { ChatMessage } from "../types/chat";
+
+const log = createLogger("chat");
 
 interface ChatRequest {
   readonly channel: string;
@@ -17,6 +20,7 @@ interface ChatResponse {
 }
 
 export async function chat(request: ChatRequest): Promise<ChatResponse> {
+  const done = log.time(`chat [${request.channel}]`);
   const channel = await requireChannel(request.channel);
 
   const memoryCtx = {
@@ -24,10 +28,14 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     agentId: channel.id,
   };
 
-  const memoryPromise = recallMemories(request.message, memoryCtx);
-  const agent = getChannelAgent(channel);
+  const recallDone = log.time("memory recall");
+  const [memoryContext, agent] = await Promise.all([
+    recallMemories(request.message, memoryCtx),
+    Promise.resolve(getChannelAgent(channel)),
+  ]);
+  recallDone();
 
-  const memoryContext = await memoryPromise;
+  log.debug("memory context", { found: memoryContext.length > 0 });
 
   const memoryMessages: ChatMessage[] = memoryContext
     ? [{ role: "assistant", content: memoryContext }]
@@ -39,7 +47,9 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     { role: "user", content: request.message },
   ];
 
+  const agentDone = log.time("agent invoke");
   const result = await agent.invoke({ messages });
+  agentDone();
 
   const lastMessage = result.messages.at(-1);
   const reply =
@@ -53,10 +63,13 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
       { role: "assistant", content: reply },
     ],
     memoryCtx,
-  ).catch((err) => {
-    console.error("[mem0] Failed to save conversation:", err);
-  });
+  )
+    .then(() => log.debug("memory saved", { userId: request.userId }))
+    .catch((err) => {
+      log.error("memory save failed", { err: String(err) });
+    });
 
+  done();
   return {
     channelName: channel.name,
     handle: channel.username,

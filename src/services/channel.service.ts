@@ -1,4 +1,5 @@
 import { NotFoundError } from "../lib/errors";
+import { createLogger } from "../lib/logger";
 import * as channelRepo from "../repositories/channel.repo";
 import * as videoRepo from "../repositories/video.repo";
 import * as metadataRepo from "../repositories/metadata.repo";
@@ -8,6 +9,8 @@ import { fetchChannelImages } from "../yt/fetch-channel-images";
 import { fetchChannelVideos } from "../yt/fetch-videos";
 import { requireChannel, resolveChannel, toApiResponse } from "./channel.helpers";
 import type { ChannelVideosResponse } from "../yt/types";
+
+const log = createLogger("channel");
 
 interface MetadataResponse {
   readonly channelName: string;
@@ -43,10 +46,13 @@ function saveMetadataInBackground(
   channelName: string,
   videoTitles: ReadonlyArray<string>,
 ): void {
+  const done = log.time(`metadata generate [${channelName}]`);
   generateChannelMetadata(channelName, videoTitles)
     .then((generated) => metadataRepo.create(toMetadataInsert(channelId, generated)))
+    .then(() => done())
     .catch((err) => {
-      console.error(`[metadata] Failed for channel ${channelId}:`, err);
+      done();
+      log.error(`metadata generate failed`, { channel: channelId, err: String(err) });
     });
 }
 
@@ -54,6 +60,7 @@ export async function getChannelVideos(
   channelInput: string | null,
   filter: VideosFilter = {},
 ): Promise<ChannelVideosResponse> {
+  const done = log.time(`getChannelVideos [${channelInput}]`);
   const existing = await resolveChannel(channelInput);
   if (existing) {
     const [allVideos, metadata, transcribedIds] = await Promise.all([
@@ -66,6 +73,7 @@ export async function getChannelVideos(
     const videos = filter.transcribedOnly
       ? allVideos.filter((v) => transcribedIds.has(v.id))
       : allVideos;
+    done();
     return toApiResponse(existing, videos, metadata, transcribedIds);
   }
 
@@ -98,6 +106,7 @@ export async function getChannelVideos(
   const recentTitles = ytData.videos.map((v) => v.title);
   saveMetadataInBackground(channel.id, ytData.channelName, recentTitles);
 
+  done();
   return toApiResponse(channel, videos, null);
 }
 
@@ -136,8 +145,19 @@ export async function getChannelMetadataVersions(
 
 export async function generateMetadata(
   channelInput: string | null,
+  force = false,
 ): Promise<metadataRepo.MetadataRow> {
   const channel = await requireChannel(channelInput);
+
+  if (!force) {
+    const existing = await metadataRepo.findLatest(channel.id);
+    if (existing) {
+      log.info(`metadata cache hit`, { channel: channel.name });
+      return existing;
+    }
+  }
+
+  const done = log.time(`generateMetadata [${channel.name}]`);
   const titles = await videoRepo.findRecentTitles(channel.id);
 
   if (titles.length === 0) {
@@ -145,5 +165,7 @@ export async function generateMetadata(
   }
 
   const generated = await generateChannelMetadata(channel.name, titles);
-  return metadataRepo.create(toMetadataInsert(channel.id, generated));
+  const result = await metadataRepo.create(toMetadataInsert(channel.id, generated));
+  done();
+  return result;
 }

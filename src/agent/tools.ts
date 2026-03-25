@@ -4,6 +4,9 @@ import * as videoRepo from "../repositories/video.repo";
 import * as transcriptRepo from "../repositories/transcript.repo";
 import * as metadataRepo from "../repositories/metadata.repo";
 import { searchByChannelId } from "../services/search.service";
+import { createLogger } from "../lib/logger";
+
+const log = createLogger("agent-tool");
 
 const MAX_TRANSCRIPT_CHARS = 8_000;
 
@@ -24,16 +27,21 @@ function formatViews(count: number): string {
 export function createChannelTools(channelId: string) {
   const listVideos = tool(
     async ({ query, limit }) => {
-      const videos = await videoRepo.searchByChannelId(channelId, query, limit);
-      if (videos.length === 0) {
-        return "No videos found matching the criteria.";
-      }
+      const done = log.time(`list_videos query=${query ?? "*"}`);
+      try {
+        const videos = await videoRepo.searchByChannelId(channelId, query, limit);
+        if (videos.length === 0) {
+          return "No videos found matching the criteria.";
+        }
 
-      const lines = videos.map(
-        (v, i) =>
-          `${i + 1}. "${v.title}" (${formatViews(v.view_count)} views, ${formatDuration(v.duration_sec, v.duration_formatted)}) [${v.youtube_video_id}]`,
-      );
-      return `Found ${videos.length} videos:\n${lines.join("\n")}`;
+        const lines = videos.map(
+          (v, i) =>
+            `${i + 1}. "${v.title}" (${formatViews(v.view_count)} views, ${formatDuration(v.duration_sec, v.duration_formatted)}) [${v.youtube_video_id}]`,
+        );
+        return `Found ${videos.length} videos:\n${lines.join("\n")}`;
+      } finally {
+        done();
+      }
     },
     {
       name: "list_videos",
@@ -56,24 +64,29 @@ export function createChannelTools(channelId: string) {
 
   const getTranscript = tool(
     async ({ videoId }) => {
-      const video = await videoRepo.findByYoutubeVideoId(videoId);
-      if (!video) return `Video "${videoId}" not found in database.`;
+      const done = log.time(`get_transcript [${videoId}]`);
+      try {
+        const video = await videoRepo.findByYoutubeVideoId(videoId);
+        if (!video) return `Video "${videoId}" not found in database.`;
 
-      const transcript = await transcriptRepo.findByVideoId(video.id);
-      if (!transcript) {
-        return `Transcript for "${video.title}" has not been fetched yet.`;
+        const transcript = await transcriptRepo.findByVideoId(video.id);
+        if (!transcript) {
+          return `Transcript for "${video.title}" has not been fetched yet.`;
+        }
+
+        const summary = transcript.summary
+          ? `Summary: ${transcript.summary}\n\n`
+          : "";
+
+        const content =
+          transcript.content.length > MAX_TRANSCRIPT_CHARS
+            ? `${transcript.content.slice(0, MAX_TRANSCRIPT_CHARS)}... [truncated]`
+            : transcript.content;
+
+        return `${summary}Full transcript for "${video.title}":\n${content}`;
+      } finally {
+        done();
       }
-
-      const summary = transcript.summary
-        ? `Summary: ${transcript.summary}\n\n`
-        : "";
-
-      const content =
-        transcript.content.length > MAX_TRANSCRIPT_CHARS
-          ? `${transcript.content.slice(0, MAX_TRANSCRIPT_CHARS)}... [truncated]`
-          : transcript.content;
-
-      return `${summary}Full transcript for "${video.title}":\n${content}`;
     },
     {
       name: "get_transcript",
@@ -91,17 +104,22 @@ export function createChannelTools(channelId: string) {
 
   const semanticSearch = tool(
     async ({ query, limit }) => {
-      const results = await searchByChannelId(channelId, query, limit);
+      const done = log.time(`semantic_search q="${query}"`);
+      try {
+        const results = await searchByChannelId(channelId, query, limit);
 
-      if (results.length === 0) {
-        return "No relevant content found. Try a different query or check that transcripts have been fetched.";
+        if (results.length === 0) {
+          return "No relevant content found. Try a different query or check that transcripts have been fetched.";
+        }
+
+        const lines = results.map(
+          (r, i) =>
+            `${i + 1}. [${r.videoTitle}](${r.videoUrl}) (similarity: ${(r.similarity * 100).toFixed(1)}%)\n   "${r.content.slice(0, 300)}..."`,
+        );
+        return `Found ${results.length} relevant segments:\n\n${lines.join("\n\n")}`;
+      } finally {
+        done();
       }
-
-      const lines = results.map(
-        (r, i) =>
-          `${i + 1}. [${r.videoTitle}](${r.videoUrl}) (similarity: ${(r.similarity * 100).toFixed(1)}%)\n   "${r.content.slice(0, 300)}..."`,
-      );
-      return `Found ${results.length} relevant segments:\n\n${lines.join("\n\n")}`;
     },
     {
       name: "semantic_search",
@@ -121,18 +139,21 @@ export function createChannelTools(channelId: string) {
 
   const getChannelInfo = tool(
     async () => {
-      const metadata = await metadataRepo.findLatest(channelId);
-      if (!metadata) {
-        return "Channel metadata has not been generated yet.";
-      }
+      const done = log.time("get_channel_info");
+      try {
+        const metadata = await metadataRepo.findLatest(channelId);
+        if (!metadata) return "Channel metadata has not been generated yet.";
 
-      return [
-        `Overview: ${metadata.overview}`,
-        `Video types: ${metadata.associated_video_types}`,
-        `Category: ${metadata.category}`,
-        `Language: ${metadata.language}`,
-        `Metadata version: ${metadata.version}`,
-      ].join("\n");
+        return [
+          `Overview: ${metadata.overview}`,
+          `Video types: ${metadata.associated_video_types}`,
+          `Category: ${metadata.category}`,
+          `Language: ${metadata.language}`,
+          `Metadata version: ${metadata.version}`,
+        ].join("\n");
+      } finally {
+        done();
+      }
     },
     {
       name: "get_channel_info",

@@ -1,6 +1,9 @@
 import { Memory } from "mem0ai/oss";
 import { createMemoryConfig } from "./config";
+import { createLogger } from "../lib/logger";
 import type { ChatMessage } from "../types/chat";
+
+const log = createLogger("mem0");
 
 interface MemoryEntry {
   readonly id: string;
@@ -27,11 +30,14 @@ export async function saveConversation(
   messages: ReadonlyArray<ChatMessage>,
   ctx: MemoryContext,
 ): Promise<void> {
+  const done = log.time("add");
   const mem = getMemory();
-  await mem.add([...messages], {
+  const result = await mem.add([...messages], {
     userId: ctx.userId,
     agentId: ctx.agentId,
   });
+  log.debug("add result", { extracted: result?.results?.length ?? 0 });
+  done();
 }
 
 export async function recallMemories(
@@ -47,6 +53,7 @@ export async function recallMemories(
   });
 
   const memories: MemoryEntry[] = results?.results ?? [];
+  log.debug("search", { query: query.slice(0, 50), found: memories.length });
   if (memories.length === 0) return "";
 
   const lines = memories.map(

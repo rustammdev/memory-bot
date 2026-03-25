@@ -1,5 +1,8 @@
 import { join } from "node:path";
 import { db } from "./connection";
+import { createLogger } from "../lib/logger";
+
+const log = createLogger("migrate");
 
 const MIGRATIONS_DIR = join(import.meta.dir, "migrations");
 
@@ -28,6 +31,6 @@ export async function runMigrations() {
       await tx`INSERT INTO _migrations (name) VALUES (${file})`;
     });
 
-    console.log(`Applied migration: ${file}`);
+    log.info(`applied ${file}`);
   }
 }

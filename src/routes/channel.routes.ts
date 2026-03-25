@@ -35,7 +35,8 @@ export const channelRoutes = {
     },
     POST: async (req: Request) => {
       try {
-        const result = await generateMetadata(queryParam(req, "channel"));
+        const force = queryParam(req, "force") === "true";
+        const result = await generateMetadata(queryParam(req, "channel"), force);
         return ok(result);
       } catch (err) {
         return fail(err);

@@ -1,10 +1,13 @@
 import { NotFoundError } from "../lib/errors";
 import { requireParam } from "../lib/request";
+import { createLogger } from "../lib/logger";
 import * as transcriptRepo from "../repositories/transcript.repo";
 import * as videoRepo from "../repositories/video.repo";
 import { summarizeTranscript } from "../ai/summarize";
 import { fetchTranscript } from "../yt/fetch-transcript";
 import { ingestTranscript } from "../vector/ingest";
+
+const log = createLogger("transcript");
 
 interface TranscriptResponse {
   readonly videoId: string;
@@ -62,10 +65,20 @@ export async function getTranscript(
 export async function fetchAndSaveTranscript(
   videoIdInput: string | null,
   language = "en",
+  force = false,
 ): Promise<TranscriptResponse> {
   const youtubeVideoId = requireParam(videoIdInput, "videoId");
   const video = await resolveVideo(youtubeVideoId);
 
+  if (!force) {
+    const existing = await transcriptRepo.findByVideoId(video.id, language);
+    if (existing) {
+      log.info(`cache hit`, { videoId: youtubeVideoId });
+      return toResponse(existing, youtubeVideoId);
+    }
+  }
+
+  const done = log.time(`fetch+save [${youtubeVideoId}]`);
   const raw = await fetchTranscript(youtubeVideoId, language);
   const summary = await summarizeTranscript(video.title, raw.text);
 
@@ -87,8 +100,9 @@ export async function fetchAndSaveTranscript(
     content: raw.text,
     importance,
   }).catch((err) => {
-    console.error(`[vectorize] Failed for transcript ${saved.id}:`, err);
+    log.error(`vectorize failed`, { transcriptId: saved.id, err: String(err) });
   });
 
+  done();
   return toResponse(saved, youtubeVideoId);
 }

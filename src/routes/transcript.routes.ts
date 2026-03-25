@@ -20,9 +20,11 @@ export const transcriptRoutes = {
     },
     POST: async (req: Request) => {
       try {
+        const force = queryParam(req, "force") === "true";
         const result = await fetchAndSaveTranscript(
           queryParam(req, "videoId"),
           queryParam(req, "lang") ?? undefined,
+          force,
         );
         return ok(result);
       } catch (err) {
