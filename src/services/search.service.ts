@@ -1,9 +1,14 @@
 import { requireParam } from "../lib/request";
 import { requireChannel } from "./channel.helpers";
 import { embedText } from "../vector/embedder";
-import { searchByChannel, type SearchResult } from "../vector/store";
+import {
+  searchByChannel,
+  searchByChannels,
+  type SearchResult,
+  type MultiSearchResult,
+} from "../vector/store";
 
-export { type SearchResult };
+export { type SearchResult, type MultiSearchResult };
 
 export async function searchByChannelId(
   channelId: string,
@@ -12,6 +17,15 @@ export async function searchByChannelId(
 ): Promise<ReadonlyArray<SearchResult>> {
   const queryEmbedding = await embedText(query);
   return searchByChannel(channelId, queryEmbedding, limit);
+}
+
+export async function searchAcrossChannels(
+  channelIds: ReadonlyArray<string>,
+  query: string,
+  limit = 5,
+): Promise<ReadonlyArray<MultiSearchResult>> {
+  const queryEmbedding = await embedText(query);
+  return searchByChannels(channelIds, queryEmbedding, limit);
 }
 
 export async function searchChannelContent(

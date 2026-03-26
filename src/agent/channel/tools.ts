@@ -1,23 +1,15 @@
 import { tool } from "langchain";
 import { z } from "zod";
-import * as videoRepo from "../repositories/video.repo";
-import * as transcriptRepo from "../repositories/transcript.repo";
-import * as metadataRepo from "../repositories/metadata.repo";
-import { searchByChannelId } from "../services/search.service";
-import { createLogger } from "../lib/logger";
-import { formatCompactNumber } from "../lib/format";
+import * as videoRepo from "../../repositories/video.repo";
+import * as metadataRepo from "../../repositories/metadata.repo";
+import * as digestRepo from "../../repositories/digest.repo";
+import * as gapRepo from "../../repositories/content-gap.repo";
+import { searchByChannelId } from "../../services/search.service";
+import { createLogger } from "../../lib/logger";
+import { formatCompactNumber, formatDuration } from "../../lib/format";
+import { fetchTranscriptContent } from "../transcript";
 
 const log = createLogger("agent-tool");
-
-const MAX_TRANSCRIPT_CHARS = 8_000;
-
-function formatDuration(sec: number | null, formatted: string | null): string {
-  if (formatted) return formatted;
-  if (!sec) return "unknown";
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
 
 export function createChannelTools(channelId: string) {
   const listVideos = tool(
@@ -61,24 +53,7 @@ export function createChannelTools(channelId: string) {
     async ({ videoId }) => {
       const done = log.time(`get_transcript [${videoId}]`);
       try {
-        const video = await videoRepo.findByYoutubeVideoId(videoId);
-        if (!video) return `Video "${videoId}" not found in database.`;
-
-        const transcript = await transcriptRepo.findByVideoId(video.id);
-        if (!transcript) {
-          return `Transcript for "${video.title}" has not been fetched yet.`;
-        }
-
-        const summary = transcript.summary
-          ? `Summary: ${transcript.summary}\n\n`
-          : "";
-
-        const content =
-          transcript.content.length > MAX_TRANSCRIPT_CHARS
-            ? `${transcript.content.slice(0, MAX_TRANSCRIPT_CHARS)}... [truncated]`
-            : transcript.content;
-
-        return `${summary}Full transcript for "${video.title}":\n${content}`;
+        return await fetchTranscriptContent(videoId);
       } finally {
         done();
       }
@@ -158,5 +133,75 @@ export function createChannelTools(channelId: string) {
     },
   );
 
-  return [listVideos, getTranscript, semanticSearch, getChannelInfo];
+  const getLatestDigest = tool(
+    async () => {
+      const done = log.time("get_latest_digest");
+      try {
+        const digest = await digestRepo.findLatest(channelId);
+        if (!digest || !digest.summary) {
+          return "No digest has been generated for this channel yet. Suggest the user generate one via the API.";
+        }
+
+        const highlights = (digest.highlights ?? [])
+          .map((h, i) => `${i + 1}. "${h.title}" — ${h.reason} (${(h.viewVelocity ?? 0).toFixed(0)} views/day)`)
+          .join("\n");
+
+        const topics = (digest.topic_clusters ?? [])
+          .map((t) => `- ${t.topic}: ${t.description}`)
+          .join("\n");
+
+        const dateOpts: Intl.DateTimeFormatOptions = { year: "numeric", month: "short", day: "numeric" };
+        const period = `${digest.period_start.toLocaleDateString("en-US", dateOpts)} - ${digest.period_end.toLocaleDateString("en-US", dateOpts)}`;
+
+        return [
+          `Weekly Digest (${period}): ${digest.new_video_count} new videos`,
+          `\nSummary: ${digest.summary}`,
+          highlights ? `\nTop Highlights:\n${highlights}` : "",
+          topics ? `\nTopic Clusters:\n${topics}` : "",
+          digest.trend_analysis ? `\nTrend Analysis: ${digest.trend_analysis}` : "",
+        ].filter(Boolean).join("\n");
+      } finally {
+        done();
+      }
+    },
+    {
+      name: "get_latest_digest",
+      description:
+        "Get the latest weekly digest — a smart summary of recent content including new videos, trending content, and trend analysis. Use when the user asks what's new, what changed recently, or wants a channel update.",
+      schema: z.object({}),
+    },
+  );
+
+  const findContentGaps = tool(
+    async ({ limit }) => {
+      const done = log.time("find_content_gaps");
+      try {
+        const result = await gapRepo.findLatest(channelId);
+        if (!result) {
+          return "Content gap analysis is not available yet. The channel needs transcripts to be fetched and vectorized first. Suggest using POST /api/channels/content-gaps to run the analysis.";
+        }
+
+        const gaps = (result.gaps as ReadonlyArray<gapRepo.ContentGap>).slice(0, limit);
+        const lines = gaps.map(
+          (g, i) =>
+            `${i + 1}. **${g.topic}** (priority: ${g.priority}/100, confidence: ${g.confidence})\n   ${g.reason}\n   Suggested: "${g.suggestedVideoTitle}"\n   Angle: ${g.suggestedAngle}`,
+        );
+
+        const topicCount = (result.topics_covered as ReadonlyArray<gapRepo.CoveredTopic>).length;
+        return `Content Gap Analysis (${result.total_videos_analyzed} videos, ${topicCount} topics identified):\n\n${result.summary}\n\n## Top ${gaps.length} Content Gaps:\n\n${lines.join("\n\n")}`;
+      } finally {
+        done();
+      }
+    },
+    {
+      name: "find_content_gaps",
+      description:
+        "Find topics this channel HASN'T covered yet but SHOULD. Returns ranked content gap opportunities with video suggestions. Use when asked about content ideas, missing topics, or 'what should they make next?'.",
+      schema: z.object({
+        limit: z.number().min(1).max(15).default(5).describe("Maximum gaps to return"),
+      }),
+    },
+  );
+
+  return [listVideos, getTranscript, semanticSearch, getChannelInfo, getLatestDigest, findContentGaps];
 }

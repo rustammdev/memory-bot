@@ -67,6 +67,17 @@ export async function upsert(data: ChannelInsert): Promise<ChannelRow> {
   return rows[0] as ChannelRow;
 }
 
+export async function findByUsernames(
+  usernames: ReadonlyArray<string>,
+): Promise<ReadonlyArray<ChannelRow>> {
+  if (usernames.length === 0) return [];
+  const names = usernames as unknown as string[];
+  return db`
+    SELECT * FROM channels WHERE username = ANY(${names})
+    ORDER BY name
+  ` as Promise<ReadonlyArray<ChannelRow>>;
+}
+
 export async function search(
   query: string,
   limit = 50,

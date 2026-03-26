@@ -114,10 +114,64 @@ export async function findRecentTitles(
   return rows.map((r: { title: string }) => r.title);
 }
 
+export async function countByChannelId(channelId: string): Promise<number> {
+  const rows = await db`
+    SELECT COUNT(*)::int AS cnt FROM videos WHERE channel_id = ${channelId}
+  `;
+  return (rows[0] as { cnt: number }).cnt;
+}
+
 export async function getMaxViewCount(channelId: string): Promise<number> {
   const rows = await db`
     SELECT COALESCE(MAX(view_count), 0) AS max_views
     FROM videos WHERE channel_id = ${channelId}
   `;
   return (rows[0] as { max_views: number }).max_views;
+}
+
+export interface VideoWithVelocity extends VideoRow {
+  readonly view_velocity: number;
+}
+
+export async function findNewSince(
+  channelId: string,
+  since: Date,
+  limit = 50,
+): Promise<ReadonlyArray<VideoRow>> {
+  return db`
+    SELECT * FROM videos
+    WHERE channel_id = ${channelId} AND synced_at > ${since}
+    ORDER BY synced_at DESC
+    LIMIT ${limit}
+  ` as Promise<ReadonlyArray<VideoRow>>;
+}
+
+export async function findWithViewVelocity(
+  channelId: string,
+  since: Date,
+  limit = 30,
+): Promise<ReadonlyArray<VideoWithVelocity>> {
+  return db`
+    SELECT *,
+      view_count / GREATEST(EXTRACT(EPOCH FROM (NOW() - synced_at)) / 86400.0, 1) AS view_velocity
+    FROM videos
+    WHERE channel_id = ${channelId} AND synced_at > ${since}
+    ORDER BY view_velocity DESC
+    LIMIT ${limit}
+  ` as Promise<ReadonlyArray<VideoWithVelocity>>;
+}
+
+export async function findNewSinceWithSummaries(
+  channelId: string,
+  since: Date,
+  limit = 50,
+): Promise<ReadonlyArray<VideoRow & { readonly summary: string | null }>> {
+  return db`
+    SELECT v.*, t.summary
+    FROM videos v
+    LEFT JOIN transcripts t ON t.video_id = v.id AND t.language = 'en'
+    WHERE v.channel_id = ${channelId} AND v.synced_at > ${since}
+    ORDER BY v.synced_at DESC
+    LIMIT ${limit}
+  ` as Promise<ReadonlyArray<VideoRow & { readonly summary: string | null }>>;
 }

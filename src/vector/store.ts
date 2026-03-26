@@ -82,6 +82,49 @@ export async function searchByChannel(
   }));
 }
 
+export interface MultiSearchResult extends SearchResult {
+  readonly channelId: string;
+  readonly channelName: string;
+}
+
+export async function searchByChannels(
+  channelIds: ReadonlyArray<string>,
+  queryEmbedding: number[],
+  limit = 5,
+): Promise<ReadonlyArray<MultiSearchResult>> {
+  if (channelIds.length === 0) return [];
+  const vectorStr = toVectorLiteral(queryEmbedding);
+  const ids = channelIds as unknown as string[];
+  const rows = await db`
+    WITH ranked AS (
+      SELECT
+        ce.content,
+        ce.channel_id,
+        ch.name AS channel_name,
+        v.title AS video_title,
+        v.url AS video_url,
+        ce.embedding <=> ${vectorStr}::vector AS distance
+      FROM chunk_embeddings ce
+      JOIN videos v ON v.id = ce.video_id
+      JOIN channels ch ON ch.id = ce.channel_id
+      WHERE ce.channel_id = ANY(${ids})
+    )
+    SELECT content, channel_id, channel_name, video_title, video_url,
+           1 - distance AS similarity
+    FROM ranked
+    ORDER BY distance
+    LIMIT ${limit}
+  `;
+  return rows.map((r: Record<string, unknown>) => ({
+    content: r.content as string,
+    channelId: r.channel_id as string,
+    channelName: r.channel_name as string,
+    videoTitle: r.video_title as string,
+    videoUrl: r.video_url as string,
+    similarity: r.similarity as number,
+  }));
+}
+
 export async function deleteByTranscript(
   transcriptId: string,
 ): Promise<void> {

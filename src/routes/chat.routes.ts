@@ -1,37 +1,28 @@
 import { ok, fail } from "../lib/response";
-import { ValidationError } from "../lib/errors";
-import { queryParam, requireParam } from "../lib/request";
-import { chat } from "../services/chat.service";
+import { queryParam, requireParam, parseBody } from "../lib/request";
+import { chat, multiChat } from "../services/chat.service";
 import { getUserMemories } from "../memory/client";
 import { requireChannel } from "../services/channel.helpers";
-import { isValidChatMessage } from "../types/chat";
+import { chatRequestSchema, multiChatRequestSchema } from "../types/chat";
 
 export const chatRoutes = {
   "/api/chat": {
     POST: async (req: Request) => {
       try {
-        const body = (await req.json()) as Record<string, unknown>;
+        const body = await parseBody(req, chatRequestSchema);
+        const result = await chat(body);
+        return ok(result);
+      } catch (err) {
+        return fail(err);
+      }
+    },
+  },
 
-        if (!body.channel || typeof body.channel !== "string") {
-          throw new ValidationError("channel is required");
-        }
-        if (!body.message || typeof body.message !== "string") {
-          throw new ValidationError("message is required");
-        }
-        if (!body.userId || typeof body.userId !== "string") {
-          throw new ValidationError("userId is required");
-        }
-
-        const history = Array.isArray(body.history)
-          ? body.history.filter(isValidChatMessage)
-          : undefined;
-
-        const result = await chat({
-          channel: body.channel,
-          message: body.message,
-          userId: body.userId,
-          history,
-        });
+  "/api/chat/multi": {
+    POST: async (req: Request) => {
+      try {
+        const body = await parseBody(req, multiChatRequestSchema);
+        const result = await multiChat(body);
         return ok(result);
       } catch (err) {
         return fail(err);

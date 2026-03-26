@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { ValidationError } from "./errors";
 
 export function queryParam(req: Request, key: string): string | null {
@@ -19,4 +20,19 @@ export function queryParamInt(req: Request, key: string): number | undefined {
     throw new ValidationError(`"${key}" must be an integer`);
   }
   return num;
+}
+
+export async function parseBody<T>(
+  req: Request,
+  schema: z.ZodType<T>,
+): Promise<T> {
+  const raw = await req.json();
+  const result = schema.safeParse(raw);
+  if (!result.success) {
+    const messages = result.error.issues
+      .map((i) => `${i.path.join(".")}: ${i.message}`)
+      .join("; ");
+    throw new ValidationError(messages);
+  }
+  return result.data;
 }

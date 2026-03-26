@@ -2,6 +2,8 @@ import { channelRoutes } from "./channel.routes";
 import { transcriptRoutes } from "./transcript.routes";
 import { searchRoutes } from "./search.routes";
 import { chatRoutes } from "./chat.routes";
+import { digestRoutes } from "./digest.routes";
+import { contentGapRoutes } from "./content-gap.routes";
 import { createLogger } from "../lib/logger";
 
 const log = createLogger("http");
@@ -34,5 +36,7 @@ export function createRoutes() {
     ...transcriptRoutes,
     ...searchRoutes,
     ...chatRoutes,
+    ...digestRoutes,
+    ...contentGapRoutes,
   } as RouteMap);
 }

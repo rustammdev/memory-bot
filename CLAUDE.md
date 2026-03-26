@@ -27,13 +27,17 @@ src/
 │   ├── channel.routes.ts       # Channel endpoints
 │   ├── transcript.routes.ts    # Transcript endpoints
 │   ├── search.routes.ts        # Semantic search endpoints
-│   └── chat.routes.ts          # AI chat endpoint
+│   ├── chat.routes.ts          # AI chat endpoint
+│   ├── digest.routes.ts        # Smart Digest endpoints
+│   └── content-gap.routes.ts   # Content Gap Finder endpoints
 ├── services/
 │   ├── channel.service.ts      # Business logic (DB-first, yt-dlp fallback)
 │   ├── channel.helpers.ts      # Channel resolution utilities
 │   ├── transcript.service.ts   # Transcript fetch + summarize
 │   ├── search.service.ts       # Vector search orchestration
-│   └── chat.service.ts         # AI agent chat orchestration
+│   ├── chat.service.ts         # AI agent chat orchestration
+│   ├── digest.service.ts       # Smart Digest generation + caching
+│   └── content-gap.service.ts  # Content Gap analysis orchestration
 ├── agent/                      # LangChain ReAct agent
 │   ├── create.ts               # Agent factory (per-channel, cached)
 │   ├── tools.ts                # Agent tools (list_videos, get_transcript, semantic_search, get_channel_info)
@@ -44,17 +48,23 @@ src/
 ├── ai/                         # Raw AI API calls (metadata, summarization)
 │   ├── client.ts               # DeepSeek API client
 │   ├── generate-metadata.ts    # AI channel metadata generation
+│   ├── generate-digest.ts      # AI weekly digest generation
+│   ├── extract-topics.ts       # AI topic extraction from clusters
+│   ├── analyze-gaps.ts         # AI content gap analysis
 │   └── summarize.ts            # Transcript summarization
 ├── vector/                     # Embeddings & semantic search
 │   ├── embedder.ts             # OpenAI embeddings API
 │   ├── chunker.ts              # Semantic text chunking
 │   ├── ingest.ts               # Chunk → embed → store pipeline
-│   └── store.ts                # pgvector storage & search
+│   ├── store.ts                # pgvector storage & search
+│   └── cluster.ts              # K-means clustering of embeddings
 ├── repositories/               # Data access layer (1 file per table)
 │   ├── channel.repo.ts
 │   ├── video.repo.ts
 │   ├── transcript.repo.ts
-│   └── metadata.repo.ts
+│   ├── metadata.repo.ts
+│   ├── digest.repo.ts
+│   └── content-gap.repo.ts
 ├── db/
 │   ├── connection.ts           # Bun.sql PostgreSQL connection
 │   ├── migrate.ts              # Auto migration runner
@@ -63,7 +73,8 @@ src/
 │   ├── errors.ts               # AppError hierarchy
 │   ├── response.ts             # { ok, data } / { ok, error } envelope
 │   ├── request.ts              # Query param parsing
-│   └── enums.ts                # Channel categories, languages
+│   ├── enums.ts                # Channel categories, languages
+│   └── niche-topics.ts         # Per-category reference topic lists
 └── yt/                         # YouTube external service layer
     ├── types.ts
     ├── parse-channel.ts
@@ -97,7 +108,7 @@ Routes → Services → Repositories → Database
 - PostgreSQL with `Bun.sql` (tagged template queries)
 - Migrations: sequential `.sql` files in `src/db/migrations/`
 - Schema per file: `001_create_enums.sql`, `002_create_channels.sql`, etc.
-- Tables: `channels`, `videos`, `transcripts`, `channel_metadata`, `chunk_embeddings`
+- Tables: `channels`, `videos`, `transcripts`, `channel_metadata`, `chunk_embeddings`, `digests`, `content_gap_analyses`
 - mem0 manages its own tables: `agent_memories` (pgvector collection)
 - Metadata is versioned — latest returned by default, old via separate API
 
@@ -119,6 +130,20 @@ Routes → Services → Repositories → Database
 - After agent response: `saveConversation()` persists new facts (non-blocking)
 - mem0 auto-extracts facts, deduplicates, and manages memory lifecycle
 - Memories injected into system prompt as additional context
+
+### Smart Digest
+- Weekly AI-generated channel digest with view velocity scoring
+- Persona-aware narration per channel category
+- Trend comparison with previous digest
+- Optional user personalization via mem0
+- Agent tool `get_latest_digest` for conversational access
+
+### Content Gap Finder
+- K-means clustering of existing pgvector embeddings for topic coverage map
+- AI-powered topic extraction from clusters
+- Gap analysis against niche-specific reference topics
+- Ranked recommendations with confidence, priority, and suggested video titles
+- Agent tool `find_content_gaps` for conversational access
 
 ### Immutability
 - NEVER mutate objects — always create new copies
@@ -145,6 +170,12 @@ GET  /api/transcripts?videoId=dQw4w9WgXcQ
 POST /api/transcripts?videoId=dQw4w9WgXcQ
 GET  /api/search?channel=CalebWritesCode&q=react hooks
 POST /api/chat                    # AI agent chat
+GET  /api/digests?channel=CalebWritesCode
+POST /api/digests                 # Generate smart digest
+GET  /api/digests/history?channel=CalebWritesCode
+GET  /api/channels/content-gaps?channel=CalebWritesCode
+POST /api/channels/content-gaps?channel=CalebWritesCode&force=true
+GET  /api/channels/content-gaps/versions?channel=CalebWritesCode
 ```
 
 ### POST /api/chat

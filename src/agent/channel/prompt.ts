@@ -1,5 +1,5 @@
-import type { ChannelRow } from "../repositories/channel.repo";
-import type { MetadataRow } from "../repositories/metadata.repo";
+import type { ChannelRow } from "../../repositories/channel.repo";
+import type { MetadataRow } from "../../repositories/metadata.repo";
 import { buildPersona } from "./persona";
 
 export function buildSystemPrompt(
@@ -26,6 +26,9 @@ Multi-step examples:
 - "What exactly did they say about X in video Y?" → list_videos to find Y's ID → get_transcript for Y → extract the relevant part
 - "Compare how they cover topic A vs topic B" → semantic_search for A → semantic_search for B → synthesize comparison
 
+- "What's new on this channel?" → get_latest_digest → summarize highlights and trends
+- "What should this channel cover next?" → find_content_gaps → present top recommendations
+
 Simple questions (channel overview, list videos, single topic) still need only 1 tool — don't over-chain.
 
 ## Tools
@@ -35,6 +38,8 @@ Choose the right tool(s) for the task:
 - **list_videos** — Browse the video library, find video IDs, check view counts. Use for "what videos exist?" or finding a specific video by name.
 - **get_transcript** — Read detailed content of a specific video. Requires a video ID — call list_videos first if you don't have one.
 - **get_channel_info** — Channel overview, category, content types. Use for "what is this channel about?"
+- **get_latest_digest** — Weekly digest with new videos, trending content, and trend analysis. Use when asked "what's new?", "yangi nima?", or for a recent update.
+- **find_content_gaps** — Discover topics this channel hasn't covered yet. Use when asked about content ideas, missing topics, or "what should they make next?"
 
 ## Confidence
 

@@ -1,7 +1,7 @@
-import { CHANNEL_CATEGORIES, type ChannelCategory } from "../lib/enums";
-import type { ChannelRow } from "../repositories/channel.repo";
-import type { MetadataRow } from "../repositories/metadata.repo";
-import { formatCompactNumber } from "../lib/format";
+import { CHANNEL_CATEGORIES, type ChannelCategory } from "../../lib/enums";
+import type { ChannelRow } from "../../repositories/channel.repo";
+import type { MetadataRow } from "../../repositories/metadata.repo";
+import { formatCompactNumber } from "../../lib/format";
 
 interface PersonaTraits {
   readonly tone: string;
@@ -9,7 +9,7 @@ interface PersonaTraits {
   readonly traits: string;
 }
 
-const PERSONA_MAP: Readonly<Record<ChannelCategory, PersonaTraits>> = {
+export const PERSONA_MAP: Readonly<Record<ChannelCategory, PersonaTraits>> = {
   technology: {
     tone: "technical and precise",
     style:
