@@ -31,7 +31,7 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
   const recallDone = log.time("memory recall");
   const [memoryContext, agent] = await Promise.all([
     recallMemories(request.message, memoryCtx),
-    Promise.resolve(getChannelAgent(channel)),
+    getChannelAgent(channel),
   ]);
   recallDone();
 

@@ -2,6 +2,7 @@ import { createAgent } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
 import { createChannelTools } from "./tools";
 import { buildSystemPrompt } from "./prompt";
+import * as metadataRepo from "../repositories/metadata.repo";
 import type { ChannelRow } from "../repositories/channel.repo";
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
@@ -15,7 +16,7 @@ const model = new ChatOpenAI({
   modelName: "deepseek-chat",
   configuration: { baseURL: DEEPSEEK_BASE_URL },
   apiKey: DEEPSEEK_API_KEY,
-  temperature: 0.3,
+  temperature: 0.4,
 });
 
 type AgentInstance = ReturnType<typeof createAgent>;
@@ -31,14 +32,18 @@ function putCached(key: string, agent: AgentInstance): void {
   agentCache.set(key, agent);
 }
 
-export function getChannelAgent(channel: ChannelRow): AgentInstance {
+export async function getChannelAgent(
+  channel: ChannelRow,
+): Promise<AgentInstance> {
   const cached = agentCache.get(channel.id);
   if (cached) return cached;
 
+  const metadata = await metadataRepo.findLatest(channel.id);
   const tools = createChannelTools(channel.id);
-  const systemPrompt = buildSystemPrompt(channel.name, channel.username);
+  const systemPrompt = buildSystemPrompt(channel, metadata);
   const agent = createAgent({ model, tools, systemPrompt });
+  const configured = agent.withConfig({ recursionLimit: 12 });
 
-  putCached(channel.id, agent);
-  return agent;
+  putCached(channel.id, configured);
+  return configured;
 }

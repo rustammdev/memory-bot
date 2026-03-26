@@ -5,6 +5,7 @@ import * as transcriptRepo from "../repositories/transcript.repo";
 import * as metadataRepo from "../repositories/metadata.repo";
 import { searchByChannelId } from "../services/search.service";
 import { createLogger } from "../lib/logger";
+import { formatCompactNumber } from "../lib/format";
 
 const log = createLogger("agent-tool");
 
@@ -16,12 +17,6 @@ function formatDuration(sec: number | null, formatted: string | null): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function formatViews(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
-  return String(count);
 }
 
 export function createChannelTools(channelId: string) {
@@ -36,7 +31,7 @@ export function createChannelTools(channelId: string) {
 
         const lines = videos.map(
           (v, i) =>
-            `${i + 1}. "${v.title}" (${formatViews(v.view_count)} views, ${formatDuration(v.duration_sec, v.duration_formatted)}) [${v.youtube_video_id}]`,
+            `${i + 1}. "${v.title}" (${formatCompactNumber(v.view_count)} views, ${formatDuration(v.duration_sec, v.duration_formatted)}) [${v.youtube_video_id}]`,
         );
         return `Found ${videos.length} videos:\n${lines.join("\n")}`;
       } finally {
