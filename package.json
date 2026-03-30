@@ -6,7 +6,9 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch src/index.ts",
-    "test": "bun test",
+    "test": "bun test src/lib/ src/types/ src/yt/ && bun test src/vector/ && bun test src/agent/shared.test.ts src/agent/transcript.test.ts src/agent/channel/persona.test.ts src/agent/channel/prompt.test.ts src/agent/multi/prompt.test.ts && bun test src/agent/channel/tools.test.ts && bun test src/agent/multi/tools.test.ts && bun test src/repositories/ && bun test src/services/ && bun test src/routes/",
+    "test:unit": "bun test src/lib/ src/types/ src/yt/ && bun test src/vector/ && bun test src/agent/",
+    "test:integration": "bun test src/repositories/ && bun test src/services/ && bun test src/routes/",
     "test:watch": "bun test --watch",
     "migrate": "bun run src/db/migrate.ts",
     "cli": "bun run src/cli.ts"
