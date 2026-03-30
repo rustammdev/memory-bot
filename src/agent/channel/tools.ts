@@ -4,7 +4,10 @@ import * as videoRepo from "../../repositories/video.repo";
 import * as metadataRepo from "../../repositories/metadata.repo";
 import * as digestRepo from "../../repositories/digest.repo";
 import * as gapRepo from "../../repositories/content-gap.repo";
+import * as knowledgeRepo from "../../repositories/knowledge.repo";
+import { deduplicateByKey } from "../../lib/collection";
 import { searchByChannelId } from "../../services/search.service";
+import { findLearningPathByChannelId } from "../../services/knowledge.service";
 import { createLogger } from "../../lib/logger";
 import { formatCompactNumber, formatDuration } from "../../lib/format";
 import { fetchTranscriptContent } from "../transcript";
@@ -203,5 +206,99 @@ export function createChannelTools(channelId: string) {
     },
   );
 
-  return [listVideos, getTranscript, semanticSearch, getChannelInfo, getLatestDigest, findContentGaps];
+  const exploreKnowledgeGraph = tool(
+    async ({ topic, limit }) => {
+      const done = log.time(`explore_knowledge_graph topic="${topic}"`);
+      try {
+        const node = await knowledgeRepo.findNodeByLabel(channelId, topic);
+        if (!node) {
+          const topNodes = await knowledgeRepo.findTopNodes(channelId, 10);
+          if (topNodes.length === 0) {
+            return "Knowledge graph has not been built for this channel yet. Suggest using POST /api/knowledge/build to generate it.";
+          }
+          const suggestions = topNodes
+            .map((n) => n.label)
+            .join(", ");
+          return `Topic "${topic}" not found in knowledge graph. Available topics include: ${suggestions}`;
+        }
+
+        const [refs, neighbors] = await Promise.all([
+          knowledgeRepo.findVideoRefsForNode(node.id),
+          knowledgeRepo.findNeighbors(node.id),
+        ]);
+
+        const videoLines = deduplicateByKey(refs, (r) => r.video_id)
+          .slice(0, limit)
+          .map((r, i) => `${i + 1}. "${r.video_title}" [${r.youtube_video_id}]`)
+          .join("\n");
+
+        const neighborLines = neighbors
+          .slice(0, 10)
+          .map((n) => {
+            const dir = n.source_id === node.id ? "→" : "←";
+            return `- ${dir} ${n.neighbor_label} (${n.relationship})`;
+          })
+          .join("\n");
+
+        return [
+          `**${node.label}** (${node.type})`,
+          node.description ? `Description: ${node.description}` : "",
+          `Mentioned ${node.mention_count} times, importance: ${node.importance.toFixed(1)}`,
+          videoLines ? `\nVideos covering this topic:\n${videoLines}` : "",
+          neighborLines ? `\nRelated concepts:\n${neighborLines}` : "",
+        ].filter(Boolean).join("\n");
+      } finally {
+        done();
+      }
+    },
+    {
+      name: "explore_knowledge_graph",
+      description:
+        "Explore the channel's knowledge graph to find how concepts connect. Use when asked 'what topics are related to X?', 'what videos cover X?', or 'how does X relate to Y?'. Returns the concept, related topics, and videos where it's discussed. Requires the knowledge graph to be built first.",
+      schema: z.object({
+        topic: z.string().describe("The topic/concept to explore (e.g. 'React Hooks', 'TypeScript')"),
+        limit: z.number().min(1).max(10).default(5).describe("Max videos to show"),
+      }),
+    },
+  );
+
+  const findLearningPathTool = tool(
+    async ({ from, to }) => {
+      const done = log.time(`find_learning_path from="${from}" to="${to}"`);
+      try {
+        const count = await knowledgeRepo.nodeCount(channelId);
+        if (count === 0) {
+          return "Knowledge graph has not been built for this channel yet.";
+        }
+
+        const result = await findLearningPathByChannelId(channelId, from, to);
+
+        if (!result.found) {
+          return `No learning path found from "${from}" to "${to}". They may not be connected in this channel's content. Try exploring each topic separately with explore_knowledge_graph.`;
+        }
+
+        const steps = result.path
+          .map((step, i) => {
+            const arrow = step.relationship ? ` —[${step.relationship}]→ ` : "";
+            return `${i + 1}. ${step.label} (${step.type})${i < result.path.length - 1 ? arrow : ""}`;
+          })
+          .join("\n");
+
+        return `Learning path from "${from}" to "${to}" (${result.totalSteps} steps):\n\n${steps}`;
+      } finally {
+        done();
+      }
+    },
+    {
+      name: "find_learning_path",
+      description:
+        "Find the learning path between two concepts — what you need to learn to get from A to B. Use when asked 'how do I get from X to Y?', 'what should I learn before Y?', or 'what's the path from basic to advanced X?'. Returns step-by-step concept chain with relationship types.",
+      schema: z.object({
+        from: z.string().describe("Starting concept (e.g. 'JavaScript')"),
+        to: z.string().describe("Target concept (e.g. 'React Hooks')"),
+      }),
+    },
+  );
+
+  return [listVideos, getTranscript, semanticSearch, getChannelInfo, getLatestDigest, findContentGaps, exploreKnowledgeGraph, findLearningPathTool];
 }

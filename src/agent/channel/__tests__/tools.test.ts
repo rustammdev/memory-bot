@@ -42,10 +42,10 @@ mock.module("../../../lib/logger", () => ({
 import { createChannelTools } from "../tools";
 
 describe("createChannelTools", () => {
-  test("returns 6 tools", () => {
+  test("returns 8 tools", () => {
     clearMockRows();
     const tools = createChannelTools("ch-1");
-    expect(tools.length).toBe(6);
+    expect(tools.length).toBe(8);
   });
 
   test("tools have correct names", () => {

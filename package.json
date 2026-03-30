@@ -6,7 +6,7 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch src/index.ts",
-    "test": "bun test src/lib/ src/types/ src/yt/ && bun test src/vector/ && bun test src/agent/shared.test.ts src/agent/transcript.test.ts src/agent/channel/persona.test.ts src/agent/channel/prompt.test.ts src/agent/multi/prompt.test.ts && bun test src/agent/channel/tools.test.ts && bun test src/agent/multi/tools.test.ts && bun test src/repositories/ && bun test src/services/ && bun test src/routes/",
+    "test": "bun test src/lib/ src/types/ src/yt/ && bun test src/vector/ && bun test src/ai/ && bun test src/agent/__tests__/shared.test.ts src/agent/__tests__/transcript.test.ts src/agent/channel/__tests__/persona.test.ts src/agent/channel/__tests__/prompt.test.ts src/agent/multi/__tests__/prompt.test.ts && bun test src/agent/channel/__tests__/tools.test.ts && bun test src/agent/multi/__tests__/tools.test.ts && bun test src/repositories/ && bun test src/services/ && bun test src/routes/",
     "test:unit": "bun test src/lib/ src/types/ src/yt/ && bun test src/vector/ && bun test src/agent/",
     "test:integration": "bun test src/repositories/ && bun test src/services/ && bun test src/routes/",
     "test:watch": "bun test --watch",
