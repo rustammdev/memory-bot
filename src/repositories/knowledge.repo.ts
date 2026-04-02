@@ -281,6 +281,19 @@ export async function findChunksWithVideos(
   ` as Promise<ReadonlyArray<ChunkWithVideo>>;
 }
 
+export async function findChunksByVideoId(
+  channelId: string,
+  videoId: string,
+): Promise<ReadonlyArray<ChunkWithVideo>> {
+  return db`
+    SELECT ce.id, ce.video_id, ce.content, v.title AS video_title, v.youtube_video_id
+    FROM chunk_embeddings ce
+    JOIN videos v ON v.id = ce.video_id
+    WHERE ce.channel_id = ${channelId} AND ce.video_id = ${videoId}
+    ORDER BY ce.chunk_index ASC
+  ` as Promise<ReadonlyArray<ChunkWithVideo>>;
+}
+
 export async function deleteChannelGraph(channelId: string): Promise<void> {
   await db`DELETE FROM knowledge_nodes WHERE channel_id = ${channelId}`;
 }

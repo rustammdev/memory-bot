@@ -117,12 +117,20 @@ mock.module("../../repositories/knowledge.repo", () => ({
   normalizeLabel: (label: string) => label.toLowerCase().trim().replace(/\s+/g, " "),
 }));
 
-mock.module("../../ai/extract-knowledge", () => ({
-  extractKnowledge: () =>
-    Promise.resolve({
-      entities: [{ label: "React Hooks", type: "concept", description: "hooks" }],
-      relationships: [{ source: "React Hooks", target: "TypeScript", type: "used_with", context: "ctx" }],
-    }),
+const mockBuildStatus = {
+  buildId: "build-1",
+  channelId: "ch-1",
+  status: "running" as const,
+  totalVideos: 5,
+  processedVideos: 0,
+  startedAt: now.toISOString(),
+  completedAt: null,
+  error: null,
+};
+
+mock.module("../graph-builder", () => ({
+  startBuild: () => Promise.resolve(mockBuildStatus),
+  getBuildStatus: () => Promise.resolve(mockBuildStatus),
 }));
 
 mock.module("../../lib/logger", () => ({
@@ -136,12 +144,31 @@ mock.module("../../lib/logger", () => ({
 }));
 
 import {
+  buildChannelGraph,
+  getChannelBuildStatus,
   getChannelGraph,
   getNodeDetails,
   findLearningPath,
   findLearningPathByChannelId,
   suggestForTopic,
 } from "../knowledge.service";
+
+describe("buildChannelGraph", () => {
+  test("returns build status (non-blocking)", async () => {
+    const result = await buildChannelGraph("testchannel");
+    expect(result.buildId).toBe("build-1");
+    expect(result.status).toBe("running");
+    expect(result.totalVideos).toBe(5);
+  });
+});
+
+describe("getChannelBuildStatus", () => {
+  test("returns current build status", async () => {
+    const result = await getChannelBuildStatus("testchannel");
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("running");
+  });
+});
 
 describe("getChannelGraph", () => {
   test("returns graph with nodes and edges", async () => {

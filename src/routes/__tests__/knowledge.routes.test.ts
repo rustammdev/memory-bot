@@ -41,8 +41,20 @@ const mockSuggest = {
 
 const mockStats = { nodeCount: 10, edgeCount: 15, topTypes: [{ type: "concept", count: 5 }] };
 
+const mockBuildStatus = {
+  buildId: "build-1",
+  channelId: "ch-1",
+  status: "running",
+  totalVideos: 5,
+  processedVideos: 2,
+  startedAt: "2025-06-01T00:00:00.000Z",
+  completedAt: null,
+  error: null,
+};
+
 mock.module("../../services/knowledge.service", () => ({
-  buildChannelGraph: () => Promise.resolve(mockGraph),
+  buildChannelGraph: () => Promise.resolve(mockBuildStatus),
+  getChannelBuildStatus: () => Promise.resolve(mockBuildStatus),
   getChannelGraph: () => Promise.resolve(mockGraph),
   getNodeDetails: (id: string) => {
     if (id === "n1") return Promise.resolve(mockNodeDetail);
@@ -87,15 +99,17 @@ describe("GET /api/knowledge/graph", () => {
 describe("POST /api/knowledge/build", () => {
   const handler = knowledgeRoutes["/api/knowledge/build"].POST;
 
-  test("builds graph and returns result", async () => {
+  test("returns 202 with build status", async () => {
     const req = new Request("http://localhost/api/knowledge/build?channel=testchannel", {
       method: "POST",
     });
     const resp = await handler(req);
-    expect(resp.status).toBe(200);
+    expect(resp.status).toBe(202);
 
     const body = (await resp.json()) as ApiResponse;
     expect(body.ok).toBe(true);
+    expect((body.data as typeof mockBuildStatus).status).toBe("running");
+    expect((body.data as typeof mockBuildStatus).totalVideos).toBe(5);
   });
 
   test("accepts force parameter", async () => {
@@ -103,7 +117,21 @@ describe("POST /api/knowledge/build", () => {
       method: "POST",
     });
     const resp = await handler(req);
+    expect(resp.status).toBe(202);
+  });
+});
+
+describe("GET /api/knowledge/build (status)", () => {
+  const handler = knowledgeRoutes["/api/knowledge/build"].GET;
+
+  test("returns current build status", async () => {
+    const req = new Request("http://localhost/api/knowledge/build?channel=testchannel");
+    const resp = await handler(req);
     expect(resp.status).toBe(200);
+
+    const body = (await resp.json()) as ApiResponse;
+    expect(body.ok).toBe(true);
+    expect((body.data as typeof mockBuildStatus).processedVideos).toBe(2);
   });
 });
 

@@ -2,6 +2,7 @@ import { ok, fail } from "../lib/response";
 import { queryParam, requireParam } from "../lib/request";
 import {
   buildChannelGraph,
+  getChannelBuildStatus,
   getChannelGraph,
   getNodeDetails,
   findLearningPath,
@@ -27,6 +28,14 @@ export const knowledgeRoutes = {
       try {
         const force = queryParam(req, "force") === "true";
         const result = await buildChannelGraph(queryParam(req, "channel"), force);
+        return ok(result, 202);
+      } catch (err) {
+        return fail(err);
+      }
+    },
+    GET: async (req: Request) => {
+      try {
+        const result = await getChannelBuildStatus(queryParam(req, "channel"));
         return ok(result);
       } catch (err) {
         return fail(err);

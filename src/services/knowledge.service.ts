@@ -1,16 +1,8 @@
-import { createLogger } from "../lib/logger";
-import { ValidationError } from "../lib/errors";
 import { deduplicateByKey } from "../lib/collection";
 import { requireChannel } from "./channel.helpers";
 import * as knowledgeRepo from "../repositories/knowledge.repo";
 import * as metadataRepo from "../repositories/metadata.repo";
-import { extractKnowledge } from "../ai/extract-knowledge";
-
-const log = createLogger("knowledge");
-
-const MIN_CHUNKS = 5;
-const CHUNKS_PER_BATCH = 4;
-const MAX_VIDEOS_PER_BUILD = 50;
+import { startBuild, getBuildStatus, type BuildStatus } from "./graph-builder";
 
 export interface GraphNode {
   readonly id: string;
@@ -97,136 +89,24 @@ export interface LearningPath {
   readonly totalSteps: number;
 }
 
+export { type BuildStatus } from "./graph-builder";
+
 export async function buildChannelGraph(
   channelInput: string | null,
   force = false,
-): Promise<ChannelGraph> {
-  const done = log.time(`buildGraph [${channelInput}]`);
+): Promise<BuildStatus> {
   const channel = await requireChannel(channelInput);
   const metadata = await metadataRepo.findLatest(channel.id);
   const category = metadata?.category ?? "other";
 
-  if (!force) {
-    const existing = await knowledgeRepo.nodeCount(channel.id);
-    if (existing > 0) {
-      log.info("graph exists, returning cached", { nodes: existing });
-      done();
-      return getChannelGraph(channelInput);
-    }
-  }
-
-  if (force) {
-    await knowledgeRepo.deleteChannelGraph(channel.id);
-  }
-
-  const allChunks = await knowledgeRepo.findChunksWithVideos(channel.id);
-  if (allChunks.length < MIN_CHUNKS) {
-    throw new ValidationError(
-      `Not enough transcripts. Need at least ${MIN_CHUNKS} chunks, have ${allChunks.length}. Fetch more transcripts first.`,
-    );
-  }
-
-  const videoChunks = Map.groupBy(allChunks, (c) => c.video_id);
-
-  const videoIds = [...videoChunks.keys()].slice(0, MAX_VIDEOS_PER_BUILD);
-  log.info("processing videos", { total: videoIds.length, totalChunks: allChunks.length });
-
-  const nodeMap = new Map<string, knowledgeRepo.KnowledgeNodeRow>();
-
-  for (const videoId of videoIds) {
-    const chunks = videoChunks.get(videoId) ?? [];
-    const videoTitle = chunks[0]?.video_title ?? "Unknown";
-
-    for (let i = 0; i < chunks.length; i += CHUNKS_PER_BATCH) {
-      const batch = chunks.slice(i, i + CHUNKS_PER_BATCH);
-
-      try {
-        const result = await extractKnowledge(
-          videoTitle,
-          category,
-          batch.map((c) => ({ content: c.content, chunkId: c.id })),
-        );
-
-        const upsertedNodes = await knowledgeRepo.upsertNodes(
-          channel.id,
-          result.entities.map((e) => ({
-            label: e.label,
-            type: e.type,
-            description: e.description,
-          })),
-        );
-
-        for (const node of upsertedNodes) {
-          nodeMap.set(node.normalized_label, node);
-        }
-
-        await Promise.all(
-          result.relationships.map((rel) =>
-            knowledgeRepo.upsertEdge({
-              channelId: channel.id,
-              sourceLabel: rel.source,
-              targetLabel: rel.target,
-              relationship: rel.type,
-              context: rel.context,
-            }),
-          ),
-        );
-
-        await linkEntityMentions(result.entities, batch, nodeMap, extractSnippet);
-      } catch (err) {
-        log.warn("extraction failed for batch, skipping", {
-          videoTitle,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-  }
-
-  await knowledgeRepo.updateImportance(channel.id);
-  log.info("graph built successfully");
-  done();
-
-  return getChannelGraph(channelInput);
+  return startBuild(channel.id, category, force);
 }
 
-async function linkEntityMentions(
-  entities: ReadonlyArray<{ label: string }>,
-  batch: ReadonlyArray<knowledgeRepo.ChunkWithVideo>,
-  nodeMap: Map<string, knowledgeRepo.KnowledgeNodeRow>,
-  snippetFn: (content: string, term: string) => string,
-): Promise<void> {
-  const refs: knowledgeRepo.VideoRefInsert[] = [];
-
-  for (const entity of entities) {
-    const node = nodeMap.get(knowledgeRepo.normalizeLabel(entity.label));
-    if (!node) continue;
-
-    const lowerLabel = entity.label.toLowerCase();
-    for (const chunk of batch) {
-      if (chunk.content.toLowerCase().includes(lowerLabel)) {
-        refs.push({
-          nodeId: node.id,
-          videoId: chunk.video_id,
-          chunkId: chunk.id,
-          context: snippetFn(chunk.content, entity.label),
-          relevance: 1.0,
-        });
-      }
-    }
-  }
-
-  await Promise.all(refs.map((ref) => knowledgeRepo.addVideoRef(ref)));
-}
-
-function extractSnippet(content: string, term: string): string {
-  const lower = content.toLowerCase();
-  const idx = lower.indexOf(term.toLowerCase());
-  if (idx === -1) return content.slice(0, 150);
-  const start = Math.max(0, idx - 60);
-  const end = Math.min(content.length, idx + term.length + 60);
-  const prefix = start > 0 ? "..." : "";
-  const suffix = end < content.length ? "..." : "";
-  return `${prefix}${content.slice(start, end)}${suffix}`;
+export async function getChannelBuildStatus(
+  channelInput: string | null,
+): Promise<BuildStatus | null> {
+  const channel = await requireChannel(channelInput);
+  return getBuildStatus(channel.id);
 }
 
 export async function getChannelGraph(

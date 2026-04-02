@@ -6,6 +6,7 @@ import * as videoRepo from "../repositories/video.repo";
 import { summarizeTranscript } from "../ai/summarize";
 import { fetchTranscript } from "../yt/fetch-transcript";
 import { ingestTranscript } from "../vector/ingest";
+import { extractKnowledgeForVideo } from "./graph-incremental";
 
 const log = createLogger("transcript");
 
@@ -99,9 +100,11 @@ export async function fetchAndSaveTranscript(
     transcriptId: saved.id,
     content: raw.text,
     importance,
-  }).catch((err) => {
-    log.error(`vectorize failed`, { transcriptId: saved.id, err: String(err) });
-  });
+  })
+    .then(() => extractKnowledgeForVideo(video.channel_id, video.id))
+    .catch((err) => {
+      log.error(`vectorize/knowledge failed`, { transcriptId: saved.id, err: String(err) });
+    });
 
   done();
   return toResponse(saved, youtubeVideoId);
