@@ -5,7 +5,20 @@ import { createLogger } from "./lib/logger";
 
 const log = createLogger("server");
 
-export function startServer(port = 3000) {
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+} as const;
+
+function withCors(response: Response): Response {
+  for (const [key, value] of Object.entries(CORS_HEADERS)) {
+    response.headers.set(key, value);
+  }
+  return response;
+}
+
+export function startServer(port = 3001) {
   const indexFile = Bun.file("public/index.html");
 
   const server = Bun.serve({
@@ -13,15 +26,19 @@ export function startServer(port = 3000) {
     idleTimeout: 180,
     routes: createRoutes(),
     fetch(req) {
+      if (req.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: CORS_HEADERS });
+      }
+
       const { pathname } = new URL(req.url);
 
       if (pathname === "/" || pathname === "/index.html") {
-        return new Response(indexFile, {
+        return withCors(new Response(indexFile, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
-        });
+        }));
       }
 
-      return fail(new NotFoundError("Route not found"));
+      return withCors(fail(new NotFoundError("Route not found")));
     },
   });
 

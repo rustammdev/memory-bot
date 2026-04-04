@@ -143,6 +143,20 @@ export async function getChannelMetadataVersions(
   return { versions };
 }
 
+export async function listChannels(
+  q: string | null,
+  category: string | null,
+  page: number | undefined,
+  limit: number | undefined,
+): Promise<channelRepo.ChannelListResult> {
+  return channelRepo.findAllPaginated({
+    q: q ?? undefined,
+    category: category ?? undefined,
+    page,
+    limit,
+  });
+}
+
 export async function generateMetadata(
   channelInput: string | null,
   force = false,

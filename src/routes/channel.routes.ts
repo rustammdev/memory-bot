@@ -5,9 +5,26 @@ import {
   getChannelMetadata,
   getChannelMetadataVersions,
   generateMetadata,
+  listChannels,
 } from "../services/channel.service";
 
 export const channelRoutes = {
+  "/api/channels": {
+    GET: async (req: Request) => {
+      try {
+        const result = await listChannels(
+          queryParam(req, "q"),
+          queryParam(req, "category"),
+          queryParamInt(req, "page"),
+          queryParamInt(req, "limit"),
+        );
+        return ok(result);
+      } catch (err) {
+        return fail(err);
+      }
+    },
+  },
+
   "/api/channels/videos": {
     GET: async (req: Request) => {
       try {

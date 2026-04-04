@@ -90,3 +90,77 @@ export async function search(
     LIMIT ${limit}
   ` as Promise<ReadonlyArray<ChannelRow>>;
 }
+
+export interface ChannelListItem extends ChannelRow {
+  readonly category: string | null;
+  readonly language: string | null;
+  readonly overview: string | null;
+}
+
+export interface ChannelListOptions {
+  readonly q?: string;
+  readonly category?: string;
+  readonly page?: number;
+  readonly limit?: number;
+}
+
+export interface ChannelListResult {
+  readonly channels: ReadonlyArray<ChannelListItem>;
+  readonly total: number;
+  readonly page: number;
+  readonly limit: number;
+}
+
+export async function findAllPaginated(
+  opts: ChannelListOptions = {},
+): Promise<ChannelListResult> {
+  const page = Math.max(1, opts.page ?? 1);
+  const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
+  const offset = (page - 1) * limit;
+  const pattern = `%${opts.q ?? ""}%`;
+  const hasSearch = (opts.q ?? "").trim().length > 0;
+  const hasCategory = (opts.category ?? "").trim().length > 0;
+
+  const rows = await db`
+    SELECT
+      c.*,
+      cm.category,
+      cm.language,
+      cm.overview
+    FROM channels c
+    LEFT JOIN LATERAL (
+      SELECT category, language, overview
+      FROM channel_metadata
+      WHERE channel_id = c.id
+      ORDER BY version DESC
+      LIMIT 1
+    ) cm ON true
+    WHERE
+      (${!hasSearch} OR c.name ILIKE ${pattern} OR c.username ILIKE ${pattern})
+      AND (${!hasCategory} OR cm.category = ${opts.category ?? null})
+    ORDER BY c.name
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+
+  const countRows = await db`
+    SELECT COUNT(*)::int AS total
+    FROM channels c
+    LEFT JOIN LATERAL (
+      SELECT category
+      FROM channel_metadata
+      WHERE channel_id = c.id
+      ORDER BY version DESC
+      LIMIT 1
+    ) cm ON true
+    WHERE
+      (${!hasSearch} OR c.name ILIKE ${pattern} OR c.username ILIKE ${pattern})
+      AND (${!hasCategory} OR cm.category = ${opts.category ?? null})
+  `;
+
+  return {
+    channels: rows as ReadonlyArray<ChannelListItem>,
+    total: (countRows[0] as { total: number }).total,
+    page,
+    limit,
+  };
+}
