@@ -4,6 +4,7 @@ import { getMultiChannelAgent } from "../agent/multi/create";
 import { findByUsernames } from "../repositories/channel.repo";
 import { recallMemories, saveConversation } from "../memory/client";
 import { createLogger } from "../lib/logger";
+import { runInBackground } from "../lib/concurrency";
 import { ValidationError } from "../lib/errors";
 import type { ChatMessage } from "../types/chat";
 
@@ -60,17 +61,16 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
       ? lastMessage.content
       : "I could not generate a response. Please try again.";
 
-  saveConversation(
-    [
-      { role: "user", content: request.message },
-      { role: "assistant", content: reply },
-    ],
-    memoryCtx,
-  )
-    .then(() => log.debug("memory saved", { userId: request.userId }))
-    .catch((err) => {
-      log.error("memory save failed", { err: String(err) });
-    });
+  runInBackground(
+    () => saveConversation(
+      [
+        { role: "user", content: request.message },
+        { role: "assistant", content: reply },
+      ],
+      memoryCtx,
+    ),
+    { label: `memory[${request.userId}]`, retries: 3 },
+  );
 
   done();
   return {
@@ -153,17 +153,16 @@ export async function multiChat(
       ? lastMessage.content
       : "I could not generate a response. Please try again.";
 
-  saveConversation(
-    [
-      { role: "user", content: request.message },
-      { role: "assistant", content: reply },
-    ],
-    memoryCtx,
-  )
-    .then(() => log.debug("multi memory saved", { userId: request.userId }))
-    .catch((err) => {
-      log.error("multi memory save failed", { err: String(err) });
-    });
+  runInBackground(
+    () => saveConversation(
+      [
+        { role: "user", content: request.message },
+        { role: "assistant", content: reply },
+      ],
+      memoryCtx,
+    ),
+    { label: `multi-memory[${request.userId}]`, retries: 3 },
+  );
 
   done();
   return {

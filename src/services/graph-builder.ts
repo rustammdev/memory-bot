@@ -26,8 +26,6 @@ export interface BuildStatus {
   readonly error: string | null;
 }
 
-const activeBuilds = new Map<string, BuildStatus>();
-
 function toBuildStatus(row: buildRepo.KnowledgeBuildRow): BuildStatus {
   return {
     buildId: row.id,
@@ -48,12 +46,12 @@ export async function startBuild(
   limit = DEFAULT_BUILD_LIMIT,
   tags?: TagFilter,
 ): Promise<BuildStatus> {
-  const existing = activeBuilds.get(channelId);
+  await buildRepo.markStaleBuildsFailed(channelId);
+
+  const existing = await buildRepo.findLatestBuild(channelId);
   if (existing?.status === "running") {
     throw new ConflictError("A build is already running for this channel. Check status or wait for completion.");
   }
-
-  await buildRepo.markStaleBuildsFailed(channelId);
 
   if (force) {
     await Promise.all([
@@ -84,29 +82,14 @@ export async function startBuild(
 
   const buildRow = await buildRepo.createBuild(channelId, unprocessed.length);
 
-  const status: BuildStatus = {
-    buildId: buildRow.id,
-    channelId,
-    status: "running",
-    totalVideos: unprocessed.length,
-    processedVideos: 0,
-    startedAt: buildRow.started_at.toISOString(),
-    completedAt: null,
-    error: null,
-  };
-  activeBuilds.set(channelId, status);
-
   runBuild(buildRow.id, channelId, category, unprocessed).catch((err) => {
     log.error("background build crashed", { channelId, error: err instanceof Error ? err.message : String(err) });
   });
 
-  return status;
+  return toBuildStatus(buildRow);
 }
 
 export async function getBuildStatus(channelId: string): Promise<BuildStatus | null> {
-  const active = activeBuilds.get(channelId);
-  if (active?.status === "running") return active;
-
   await buildRepo.markStaleBuildsFailed(channelId);
   const row = await buildRepo.findLatestBuild(channelId);
   return row ? toBuildStatus(row) : null;
@@ -133,28 +116,14 @@ async function runBuild(
 
       processed += batch.length;
       await buildRepo.updateProgress(buildId, processed);
-      activeBuilds.set(channelId, {
-        ...activeBuilds.get(channelId)!,
-        processedVideos: processed,
-      });
     });
 
     await knowledgeRepo.updateImportance(channelId);
     await buildRepo.completeBuild(buildId);
-    activeBuilds.set(channelId, {
-      ...activeBuilds.get(channelId)!,
-      status: "completed",
-      completedAt: new Date().toISOString(),
-    });
     log.info("build completed", { channelId, processed });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await buildRepo.failBuild(buildId, message);
-    activeBuilds.set(channelId, {
-      ...activeBuilds.get(channelId)!,
-      status: "failed",
-      error: message,
-    });
     log.error("build failed", { channelId, error: message });
   } finally {
     done();

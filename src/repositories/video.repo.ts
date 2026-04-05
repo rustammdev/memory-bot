@@ -232,12 +232,23 @@ export async function findByYoutubeVideoIds(
   ` as Promise<ReadonlyArray<VideoRow>>;
 }
 
+const MAX_TAGS = 10;
+const MAX_TAG_LENGTH = 50;
+
+export function sanitizeTags(tags: ReadonlyArray<string>): ReadonlyArray<string> {
+  const normalized = tags
+    .map((t) => t.trim().toLowerCase().replace(/^["']+|["']+$/g, ""))
+    .filter((t) => t.length > 0 && t.length <= MAX_TAG_LENGTH);
+  return [...new Set(normalized)].slice(0, MAX_TAGS);
+}
+
 export async function updateTags(
   videoId: string,
   tags: ReadonlyArray<string>,
 ): Promise<void> {
+  const clean = sanitizeTags(tags);
   await db`
-    UPDATE videos SET tags = ${db.array(tags as string[])} WHERE id = ${videoId}
+    UPDATE videos SET tags = ${db.array(clean as string[])} WHERE id = ${videoId}
   `;
 }
 

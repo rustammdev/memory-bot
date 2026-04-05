@@ -217,6 +217,19 @@ export async function findNeighbors(
   ` as Promise<ReadonlyArray<KnowledgeEdgeRow & { neighbor_label: string; neighbor_type: NodeType }>>;
 }
 
+export interface NodeDetails {
+  readonly refs: ReadonlyArray<NodeVideoRefRow & { video_title: string; youtube_video_id: string }>;
+  readonly neighbors: ReadonlyArray<KnowledgeEdgeRow & { neighbor_label: string; neighbor_type: NodeType }>;
+}
+
+export async function findNodeDetails(nodeId: string): Promise<NodeDetails> {
+  const [refs, neighbors] = await Promise.all([
+    findVideoRefsForNode(nodeId),
+    findNeighbors(nodeId),
+  ]);
+  return { refs, neighbors };
+}
+
 export async function updateImportance(channelId: string): Promise<void> {
   await db`
     WITH degree AS (

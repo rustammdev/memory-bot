@@ -1,8 +1,10 @@
 import { ExternalServiceError } from "../lib/errors";
+import { processWithConcurrency } from "../lib/concurrency";
 
 const OPENAI_URL = "https://api.openai.com/v1/embeddings";
 const MODEL = "text-embedding-3-small";
 const BATCH_SIZE = 20;
+const MAX_CONCURRENT_BATCHES = 3;
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 if (!OPENAI_API_KEY) {
@@ -44,13 +46,16 @@ export async function embedTexts(
     return fetchEmbeddings(texts);
   }
 
-  const results: number[][] = [];
+  const batches: Array<{ batch: ReadonlyArray<string>; idx: number }> = [];
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-    const batch = texts.slice(i, i + BATCH_SIZE);
-    const embeddings = await fetchEmbeddings(batch);
-    results.push(...embeddings);
+    batches.push({ batch: texts.slice(i, i + BATCH_SIZE), idx: batches.length });
   }
-  return results;
+
+  const results: Array<ReadonlyArray<number[]>> = new Array(batches.length);
+  await processWithConcurrency(batches, MAX_CONCURRENT_BATCHES, async ({ batch, idx }) => {
+    results[idx] = await fetchEmbeddings(batch);
+  });
+  return results.flat();
 }
 
 export async function embedText(text: string): Promise<number[]> {

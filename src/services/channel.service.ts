@@ -8,6 +8,7 @@ import { generateChannelMetadata, type GeneratedMetadata } from "../ai/generate-
 import { fetchChannelImages } from "../yt/fetch-channel-images";
 import { fetchChannelVideos } from "../yt/fetch-videos";
 import { requireChannel, resolveChannel, toApiResponse } from "./channel.helpers";
+import { runInBackground } from "../lib/concurrency";
 import type { ChannelVideosResponse } from "../yt/types";
 
 const log = createLogger("channel");
@@ -48,14 +49,15 @@ function saveMetadataInBackground(
   channelName: string,
   videoTitles: ReadonlyArray<string>,
 ): void {
-  const done = log.time(`metadata generate [${channelName}]`);
-  generateChannelMetadata(channelName, videoTitles)
-    .then((generated) => metadataRepo.create(toMetadataInsert(channelId, generated)))
-    .then(() => done())
-    .catch((err) => {
+  runInBackground(
+    async () => {
+      const done = log.time(`metadata generate [${channelName}]`);
+      const generated = await generateChannelMetadata(channelName, videoTitles);
+      await metadataRepo.create(toMetadataInsert(channelId, generated));
       done();
-      log.error(`metadata generate failed`, { channel: channelId, err: String(err) });
-    });
+    },
+    { label: `metadata[${channelName}]`, retries: 3 },
+  );
 }
 
 interface SyncResult {

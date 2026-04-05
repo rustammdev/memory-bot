@@ -21,6 +21,16 @@ function toVectorLiteral(embedding: number[]): string {
   return `[${embedding.join(",")}]`;
 }
 
+function str(v: unknown, field: string): string {
+  if (typeof v === "string") return v;
+  throw new TypeError(`DB row: expected string for "${field}", got ${v === null ? "null" : typeof v}`);
+}
+
+function num(v: unknown, field: string): number {
+  if (typeof v === "number") return v;
+  throw new TypeError(`DB row: expected number for "${field}", got ${v === null ? "null" : typeof v}`);
+}
+
 export async function insertChunks(
   chunks: ReadonlyArray<ChunkRecord>,
   transcriptId?: string,
@@ -75,10 +85,10 @@ export async function searchByChannel(
     LIMIT ${limit}
   `;
   return rows.map((r: Record<string, unknown>) => ({
-    content: r.content as string,
-    videoTitle: r.video_title as string,
-    videoUrl: r.video_url as string,
-    similarity: r.similarity as number,
+    content: str(r.content, "content"),
+    videoTitle: str(r.video_title, "video_title"),
+    videoUrl: str(r.video_url, "video_url"),
+    similarity: num(r.similarity, "similarity"),
   }));
 }
 
@@ -94,7 +104,7 @@ export async function searchByChannels(
 ): Promise<ReadonlyArray<MultiSearchResult>> {
   if (channelIds.length === 0) return [];
   const vectorStr = toVectorLiteral(queryEmbedding);
-  const ids = channelIds as unknown as string[];
+  const ids = Array.from(channelIds);
   const rows = await db`
     WITH ranked AS (
       SELECT
@@ -116,12 +126,12 @@ export async function searchByChannels(
     LIMIT ${limit}
   `;
   return rows.map((r: Record<string, unknown>) => ({
-    content: r.content as string,
-    channelId: r.channel_id as string,
-    channelName: r.channel_name as string,
-    videoTitle: r.video_title as string,
-    videoUrl: r.video_url as string,
-    similarity: r.similarity as number,
+    content: str(r.content, "content"),
+    channelId: str(r.channel_id, "channel_id"),
+    channelName: str(r.channel_name, "channel_name"),
+    videoTitle: str(r.video_title, "video_title"),
+    videoUrl: str(r.video_url, "video_url"),
+    similarity: num(r.similarity, "similarity"),
   }));
 }
 

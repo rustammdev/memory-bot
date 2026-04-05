@@ -13,12 +13,12 @@ const mockBuildRow = {
   completed_at: null,
 };
 
-const mockChunks = [
-  { id: "c1", video_id: "vid-1", content: "React hooks explained here", video_title: "React Tutorial", youtube_video_id: "abc" },
-  { id: "c2", video_id: "vid-1", content: "More about hooks", video_title: "React Tutorial", youtube_video_id: "abc" },
-  { id: "c3", video_id: "vid-2", content: "TypeScript basics", video_title: "TS Intro", youtube_video_id: "def" },
-  { id: "c4", video_id: "vid-2", content: "TS generics deep dive", video_title: "TS Intro", youtube_video_id: "def" },
-  { id: "c5", video_id: "vid-2", content: "TS advanced types", video_title: "TS Intro", youtube_video_id: "def" },
+const mockSummaries = [
+  { video_id: "vid-1", content: "This video explains React hooks including useState and useEffect.", video_title: "React Tutorial", youtube_video_id: "abc" },
+  { video_id: "vid-2", content: "TypeScript basics covering generics and advanced types.", video_title: "TS Intro", youtube_video_id: "def" },
+  { video_id: "vid-3", content: "Node.js streams and async patterns for scalable backends.", video_title: "Node Streams", youtube_video_id: "ghi" },
+  { video_id: "vid-4", content: "Docker containers and orchestration with Kubernetes.", video_title: "Docker Intro", youtube_video_id: "jkl" },
+  { video_id: "vid-5", content: "GraphQL vs REST API design patterns comparison.", video_title: "API Design", youtube_video_id: "mno" },
 ];
 
 const mockNode = {
@@ -47,7 +47,7 @@ mock.module("../../repositories/knowledge-build.repo", () => ({
 }));
 
 mock.module("../../repositories/knowledge.repo", () => ({
-  findChunksWithVideos: () => Promise.resolve(mockChunks),
+  findVideoSummaries: () => Promise.resolve(mockSummaries),
   deleteChannelGraph: () => Promise.resolve(),
   updateImportance: () => Promise.resolve(),
   upsertNodes: () => Promise.resolve([mockNode]),
@@ -57,7 +57,7 @@ mock.module("../../repositories/knowledge.repo", () => ({
 }));
 
 mock.module("../../ai/extract-knowledge", () => ({
-  extractKnowledge: () =>
+  extractKnowledge: (_videos: unknown[], _category: string) =>
     Promise.resolve({
       entities: [{ label: "React", type: "framework", description: "UI lib" }],
       relationships: [],
@@ -85,7 +85,7 @@ mock.module("../../lib/logger", () => ({
   }),
 }));
 
-import { startBuild, getBuildStatus, processVideo } from "../graph-builder";
+import { startBuild, getBuildStatus, processBatch } from "../graph-builder";
 
 describe("startBuild", () => {
   test("returns build status with running state", async () => {
@@ -111,12 +111,12 @@ describe("getBuildStatus", () => {
   });
 });
 
-describe("processVideo", () => {
-  test("processes chunks without error", async () => {
-    await processVideo("ch-1", mockChunks.slice(0, 2), "technology");
+describe("processBatch", () => {
+  test("processes batch of summaries without error", async () => {
+    await processBatch("ch-1", mockSummaries.slice(0, 3), "technology");
   });
 
-  test("handles empty chunks gracefully", async () => {
-    await processVideo("ch-1", [], "technology");
+  test("handles empty batch gracefully", async () => {
+    await processBatch("ch-1", [], "technology");
   });
 });

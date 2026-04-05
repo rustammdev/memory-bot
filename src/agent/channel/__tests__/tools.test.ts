@@ -75,7 +75,8 @@ describe("createChannelTools", () => {
     const listVideos = tools.find((t: any) => t.name === "list_videos");
     const result = await (listVideos as any).invoke({ limit: 10 });
     expect(result).toContain("Test Video");
-    expect(result).toContain("5.0K views");
+    expect(result).toContain("5.0K");
+    expect(result).toContain("views");
   });
 
   test("list_videos handles empty results", async () => {
@@ -104,7 +105,7 @@ describe("createChannelTools", () => {
       limit: 5,
     });
     expect(result).toContain("React Tutorial");
-    expect(result).toContain("92.0%");
+    expect(result).toContain("92%");
   });
 
   test("get_channel_info returns metadata", async () => {

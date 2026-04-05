@@ -60,13 +60,13 @@ describe("fail", () => {
     expect(body).toEqual({ ok: false, error: "not found" });
   });
 
-  test("handles generic Error with 500 status", async () => {
-    const err = new Error("unexpected crash");
+  test("handles generic Error with 500 status and hides details", async () => {
+    const err = new Error("unexpected crash with DB details");
     const resp = fail(err);
     expect(resp.status).toBe(500);
 
     const body = await resp.json();
-    expect(body).toEqual({ ok: false, error: "unexpected crash" });
+    expect(body).toEqual({ ok: false, error: "Internal server error" });
   });
 
   test("handles unknown error type with 500 status", async () => {

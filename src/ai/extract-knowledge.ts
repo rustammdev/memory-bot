@@ -91,8 +91,8 @@ function parseExtractionResponse(response: string): RawExtractionResult {
   for (const item of raw.relationships ?? []) {
     if (typeof item !== "object" || item === null) continue;
     const r = item as Record<string, unknown>;
-    const source = typeof r["source"] === "string" ? r["source"].trim() : "";
-    const target = typeof r["target"] === "string" ? r["target"].trim() : "";
+    const source = typeof r["source"] === "string" ? normalizeLabel(r["source"]) : "";
+    const target = typeof r["target"] === "string" ? normalizeLabel(r["target"]) : "";
     const type = typeof r["type"] === "string" ? r["type"] : "";
     const context = typeof r["context"] === "string" ? r["context"].trim() : "";
     if (!source || !target || source === target) continue;

@@ -26,7 +26,12 @@ export class ConflictError extends AppError {
 }
 
 export class ExternalServiceError extends AppError {
+  readonly service: string;
+  readonly detail: string;
+
   constructor(service: string, detail: string) {
-    super(`${service} error: ${detail}`, 502);
+    super(`${service} service is temporarily unavailable`, 502);
+    this.service = service;
+    this.detail = detail;
   }
 }

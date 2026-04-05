@@ -28,6 +28,11 @@ const sampleVideo: VideoRow = {
   view_count: 5000,
   duration_sec: 600,
   duration_formatted: "10:00",
+  thumbnail_default: null,
+  thumbnail_medium: null,
+  thumbnail_high: null,
+  thumbnail_maxres: null,
+  tags: ["typescript", "testing"],
   uploaded_at: new Date("2025-01-01"),
   synced_at: new Date("2025-01-01"),
   created_at: new Date("2025-01-01"),
@@ -79,6 +84,7 @@ describe("toApiResponse", () => {
     expect(result.videos[0]!.id).toBe("abc123");
     expect(result.videos[0]!.title).toBe("Test Video");
     expect(result.videos[0]!.viewCount).toBe(5000);
+    expect(result.videos[0]!.tags).toEqual(["typescript", "testing"]);
   });
 
   test("handles null metadata", () => {

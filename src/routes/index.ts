@@ -6,25 +6,13 @@ import { digestRoutes } from "./digest.routes";
 import { contentGapRoutes } from "./content-gap.routes";
 import { knowledgeRoutes } from "./knowledge.routes";
 import { createLogger } from "../lib/logger";
+import { CORS_HEADERS, withCors } from "../lib/cors";
 
 const log = createLogger("http");
 
 type Handler = (req: Request) => Promise<Response> | Response;
 type Methods = Record<string, Handler>;
 type RouteMap = Record<string, Methods>;
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-} as const;
-
-function withCors(response: Response): Response {
-  for (const [key, value] of Object.entries(CORS_HEADERS)) {
-    response.headers.set(key, value);
-  }
-  return response;
-}
 
 function withLogging(routes: RouteMap): RouteMap {
   const wrapped: RouteMap = {};

@@ -71,7 +71,7 @@ export async function findByUsernames(
   usernames: ReadonlyArray<string>,
 ): Promise<ReadonlyArray<ChannelRow>> {
   if (usernames.length === 0) return [];
-  const names = usernames as unknown as string[];
+  const names = Array.from(usernames);
   return db`
     SELECT * FROM channels WHERE username = ANY(${names})
     ORDER BY name

@@ -2,21 +2,9 @@ import { createRoutes } from "./routes";
 import { fail } from "./lib/response";
 import { NotFoundError } from "./lib/errors";
 import { createLogger } from "./lib/logger";
+import { CORS_HEADERS, withCors } from "./lib/cors";
 
 const log = createLogger("server");
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-} as const;
-
-function withCors(response: Response): Response {
-  for (const [key, value] of Object.entries(CORS_HEADERS)) {
-    response.headers.set(key, value);
-  }
-  return response;
-}
 
 export function startServer(port = 3001) {
   const indexFile = Bun.file("public/index.html");

@@ -14,7 +14,7 @@ import {
   findVideoRefsForNode,
   findNeighbors,
   getGraphStats,
-  findChunksWithVideos,
+  findVideoSummaries,
   deleteChannelGraph,
   nodeCount,
   type KnowledgeNodeRow,
@@ -244,17 +244,16 @@ describe("getGraphStats", () => {
   });
 });
 
-describe("findChunksWithVideos", () => {
-  test("returns chunks with video info", async () => {
-    const chunk = {
-      id: "chunk-1",
+describe("findVideoSummaries", () => {
+  test("returns video summaries", async () => {
+    const summary = {
       video_id: "vid-1",
-      content: "React hooks are great",
+      content: "React hooks explained including useState and useEffect.",
       video_title: "React Tutorial",
       youtube_video_id: "xyz789",
     };
-    pushMockRows([chunk]);
-    const result = await findChunksWithVideos("ch-1");
+    pushMockRows([summary]);
+    const result = await findVideoSummaries("ch-1");
     expect(result.length).toBe(1);
     expect(result[0]!.video_title).toBe("React Tutorial");
   });

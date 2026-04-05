@@ -11,6 +11,7 @@ import {
   findNewSince,
   findWithViewVelocity,
   findNewSinceWithSummaries,
+  sanitizeTags,
   type VideoRow,
 } from "../video.repo";
 
@@ -23,6 +24,11 @@ const sampleVideo: VideoRow = {
   view_count: 5000,
   duration_sec: 600,
   duration_formatted: "10:00",
+  thumbnail_default: null,
+  thumbnail_medium: null,
+  thumbnail_high: null,
+  thumbnail_maxres: null,
+  tags: [],
   uploaded_at: new Date("2025-01-01"),
   synced_at: new Date("2025-01-01"),
   created_at: new Date("2025-01-01"),
@@ -153,5 +159,29 @@ describe("findNewSinceWithSummaries", () => {
     pushMockRows([{ ...sampleVideo, summary: "A test summary" }]);
     const result = await findNewSinceWithSummaries("ch-1", new Date("2024-01-01"));
     expect(result.length).toBe(1);
+  });
+});
+
+describe("sanitizeTags", () => {
+  test("lowercases and trims tags", () => {
+    expect(sanitizeTags(["React", " TypeScript ", "CSS"])).toEqual(["react", "typescript", "css"]);
+  });
+
+  test("removes duplicates", () => {
+    expect(sanitizeTags(["react", "React", "REACT"])).toEqual(["react"]);
+  });
+
+  test("strips surrounding quotes", () => {
+    expect(sanitizeTags(['"react"', "'hooks'"])).toEqual(["react", "hooks"]);
+  });
+
+  test("filters empty and overly long tags", () => {
+    const longTag = "a".repeat(51);
+    expect(sanitizeTags(["", "  ", longTag, "valid"])).toEqual(["valid"]);
+  });
+
+  test("limits to 10 tags", () => {
+    const tags = Array.from({ length: 15 }, (_, i) => `tag${i}`);
+    expect(sanitizeTags(tags).length).toBe(10);
   });
 });

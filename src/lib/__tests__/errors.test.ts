@@ -56,10 +56,19 @@ describe("NotFoundError", () => {
 });
 
 describe("ExternalServiceError", () => {
-  test("has 502 status code and formatted message", () => {
+  test("has 502 status code and safe user-facing message", () => {
     const err = new ExternalServiceError("YouTube", "rate limit exceeded");
     expect(err.statusCode).toBe(502);
-    expect(err.message).toBe("YouTube error: rate limit exceeded");
+    expect(err.message).toBe("YouTube service is temporarily unavailable");
+    expect(err.service).toBe("YouTube");
+    expect(err.detail).toBe("rate limit exceeded");
+  });
+
+  test("does not expose internal details in message", () => {
+    const err = new ExternalServiceError("DeepSeek", "HTTP 500: {\"error\":\"internal\"}");
+    expect(err.message).not.toContain("HTTP 500");
+    expect(err.message).not.toContain("internal");
+    expect(err.detail).toContain("HTTP 500");
   });
 
   test("is an instance of AppError", () => {

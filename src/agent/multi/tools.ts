@@ -3,8 +3,8 @@ import { z } from "zod";
 import * as videoRepo from "../../repositories/video.repo";
 import { searchAcrossChannels } from "../../services/search.service";
 import { createLogger } from "../../lib/logger";
-import { formatCompactNumber, formatDuration } from "../../lib/format";
-import { fetchTranscriptContent } from "../transcript";
+import { formatCompactNumber } from "../../lib/format";
+import { createGetTranscriptTool, formatVideoLines } from "../tool-helpers";
 import type { ChannelRow } from "../../repositories/channel.repo";
 import type { MetadataRow } from "../../repositories/metadata.repo";
 
@@ -37,9 +37,9 @@ export function createMultiChannelTools(ctx: MultiToolContext) {
         for (const [channelName, items] of grouped) {
           const lines = items.map(
             (r, i) =>
-              `  ${i + 1}. [${r.videoTitle}](${r.videoUrl}) (similarity: ${(r.similarity * 100).toFixed(1)}%)\n     "${r.content.slice(0, 250)}..."`,
+              `  ${i + 1}. **${r.videoTitle}** — ${(r.similarity * 100).toFixed(0)}% match\n     "${r.content.slice(0, 250)}..."`,
           );
-          sections.push(`**${channelName}:**\n${lines.join("\n")}`);
+          sections.push(`### ${channelName}\n${lines.join("\n")}`);
         }
 
         return `Found ${results.length} relevant segments across ${grouped.size} channels:\n\n${sections.join("\n\n")}`;
@@ -76,12 +76,7 @@ export function createMultiChannelTools(ctx: MultiToolContext) {
         if (videos.length === 0) {
           return `No videos found in @${channel} matching the criteria.`;
         }
-
-        const lines = videos.map(
-          (v, i) =>
-            `${i + 1}. "${v.title}" (${formatCompactNumber(v.view_count)} views, ${formatDuration(v.duration_sec, v.duration_formatted)}) [${v.youtube_video_id}]`,
-        );
-        return `@${channel} — ${videos.length} videos:\n${lines.join("\n")}`;
+        return `**@${channel}** — ${videos.length} videos:\n\n${formatVideoLines(videos).join("\n\n")}`;
       } finally {
         done();
       }
@@ -108,28 +103,7 @@ export function createMultiChannelTools(ctx: MultiToolContext) {
     },
   );
 
-  const getTranscript = tool(
-    async ({ videoId }) => {
-      const done = log.time(`get_transcript [${videoId}]`);
-      try {
-        return await fetchTranscriptContent(videoId);
-      } finally {
-        done();
-      }
-    },
-    {
-      name: "get_transcript",
-      description:
-        "Read the full transcript and AI-generated summary of a specific video. Requires a YouTube video ID — call list_channel_videos first if you don't have one.",
-      schema: z.object({
-        videoId: z
-          .string()
-          .describe(
-            "The YouTube video ID (e.g. 'dQw4w9WgXcQ'), found in list_channel_videos output",
-          ),
-      }),
-    },
-  );
+  const getTranscript = createGetTranscriptTool("list_channel_videos");
 
   const getChannelOverview = tool(
     async ({ channel }) => {

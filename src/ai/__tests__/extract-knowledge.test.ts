@@ -37,8 +37,8 @@ describe("extractKnowledge", () => {
     expect(result.entities[0]!.label).toBe("React Hooks");
     expect(result.entities[0]!.type).toBe("concept");
     expect(result.relationships.length).toBe(2);
-    expect(result.relationships[0]!.source).toBe("React Hooks");
-    expect(result.relationships[0]!.target).toBe("useState");
+    expect(result.relationships[0]!.source).toBe("react hooks");
+    expect(result.relationships[0]!.target).toBe("usestate");
   });
 
   test("filters entities with invalid types", async () => {

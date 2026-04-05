@@ -8,6 +8,12 @@ mock.module("@langchain/openai", () => ({
 }));
 
 mock.module("langchain", () => ({
+  tool: (handler: Function, config: any) => ({
+    name: config.name,
+    description: config.description,
+    handler,
+    invoke: (args: any) => handler(args),
+  }),
   createAgent: () => ({}),
 }));
 

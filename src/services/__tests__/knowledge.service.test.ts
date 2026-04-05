@@ -101,13 +101,9 @@ mock.module("../../repositories/knowledge.repo", () => ({
   },
   findVideoRefsForNode: () => Promise.resolve([mockVideoRef]),
   findNeighbors: () => Promise.resolve([mockNeighbor]),
-  findChunksWithVideos: () =>
+  findVideoSummaries: () =>
     Promise.resolve([
-      { id: "c1", video_id: "vid-1", content: "React hooks content", video_title: "React Tutorial", youtube_video_id: "abc" },
-      { id: "c2", video_id: "vid-1", content: "More hooks content", video_title: "React Tutorial", youtube_video_id: "abc" },
-      { id: "c3", video_id: "vid-1", content: "TypeScript content", video_title: "React Tutorial", youtube_video_id: "abc" },
-      { id: "c4", video_id: "vid-1", content: "useState content", video_title: "React Tutorial", youtube_video_id: "abc" },
-      { id: "c5", video_id: "vid-1", content: "Final content", video_title: "React Tutorial", youtube_video_id: "abc" },
+      { video_id: "vid-1", content: "React hooks explained including useState and useEffect.", video_title: "React Tutorial", youtube_video_id: "abc" },
     ]),
   upsertNodes: () => Promise.resolve([mockNode]),
   upsertEdge: () => Promise.resolve(mockEdge),

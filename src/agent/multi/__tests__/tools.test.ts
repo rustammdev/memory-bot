@@ -107,7 +107,7 @@ describe("createMultiChannelTools", () => {
     });
     expect(result).toContain("Channel A");
     expect(result).toContain("Channel B");
-    expect(result).toContain("90.0%");
+    expect(result).toContain("90%");
   });
 
   test("list_channel_videos returns video list", async () => {

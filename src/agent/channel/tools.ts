@@ -9,8 +9,7 @@ import { deduplicateByKey } from "../../lib/collection";
 import { searchByChannelId } from "../../services/search.service";
 import { findLearningPathByChannelId, buildChannelGraphById } from "../../services/knowledge.service";
 import { createLogger } from "../../lib/logger";
-import { formatCompactNumber, formatDuration } from "../../lib/format";
-import { fetchTranscriptContent } from "../transcript";
+import { createGetTranscriptTool, formatVideoLines } from "../tool-helpers";
 
 const log = createLogger("agent-tool");
 
@@ -23,12 +22,7 @@ export function createChannelTools(channelId: string) {
         if (videos.length === 0) {
           return "No videos found matching the criteria.";
         }
-
-        const lines = videos.map(
-          (v, i) =>
-            `${i + 1}. "${v.title}" (${formatCompactNumber(v.view_count)} views, ${formatDuration(v.duration_sec, v.duration_formatted)}) [${v.youtube_video_id}]`,
-        );
-        return `Found ${videos.length} videos:\n${lines.join("\n")}`;
+        return `Found ${videos.length} videos:\n\n${formatVideoLines(videos).join("\n\n")}`;
       } finally {
         done();
       }
@@ -52,28 +46,7 @@ export function createChannelTools(channelId: string) {
     },
   );
 
-  const getTranscript = tool(
-    async ({ videoId }) => {
-      const done = log.time(`get_transcript [${videoId}]`);
-      try {
-        return await fetchTranscriptContent(videoId);
-      } finally {
-        done();
-      }
-    },
-    {
-      name: "get_transcript",
-      description:
-        "Read the full transcript and AI-generated summary of a specific video. Use when the user wants detailed content from a particular video. Requires a YouTube video ID — call list_videos first if you don't have one. Do NOT use for broad topic searches across multiple videos — use semantic_search instead.",
-      schema: z.object({
-        videoId: z
-          .string()
-          .describe(
-            "The YouTube video ID (e.g. 'dQw4w9WgXcQ'), found in list_videos output",
-          ),
-      }),
-    },
-  );
+  const getTranscript = createGetTranscriptTool("list_videos");
 
   const semanticSearch = tool(
     async ({ query, limit }) => {
@@ -87,7 +60,7 @@ export function createChannelTools(channelId: string) {
 
         const lines = results.map(
           (r, i) =>
-            `${i + 1}. [${r.videoTitle}](${r.videoUrl}) (similarity: ${(r.similarity * 100).toFixed(1)}%)\n   "${r.content.slice(0, 300)}..."`,
+            `${i + 1}. **${r.videoTitle}** — ${(r.similarity * 100).toFixed(0)}% match\n   "${r.content.slice(0, 250)}..."`,
         );
         return `Found ${results.length} relevant segments:\n\n${lines.join("\n\n")}`;
       } finally {
@@ -118,11 +91,12 @@ export function createChannelTools(channelId: string) {
         if (!metadata) return "Channel metadata has not been generated yet.";
 
         return [
-          `Overview: ${metadata.overview}`,
-          `Video types: ${metadata.associated_video_types}`,
-          `Category: ${metadata.category}`,
-          `Language: ${metadata.language}`,
-          `Metadata version: ${metadata.version}`,
+          `## Channel Info`,
+          `**Overview:** ${metadata.overview}`,
+          `**Video types:** ${metadata.associated_video_types}`,
+          `**Category:** ${metadata.category}`,
+          `**Language:** ${metadata.language}`,
+          `**Metadata version:** ${metadata.version}`,
         ].join("\n");
       } finally {
         done();
@@ -222,10 +196,7 @@ export function createChannelTools(channelId: string) {
           return `Topic "${topic}" not found in knowledge graph. Available topics include: ${suggestions}`;
         }
 
-        const [refs, neighbors] = await Promise.all([
-          knowledgeRepo.findVideoRefsForNode(node.id),
-          knowledgeRepo.findNeighbors(node.id),
-        ]);
+        const { refs, neighbors } = await knowledgeRepo.findNodeDetails(node.id);
 
         const videoLines = deduplicateByKey(refs, (r) => r.video_id)
           .slice(0, limit)
