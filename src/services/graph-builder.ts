@@ -1,15 +1,19 @@
 import { createLogger } from "../lib/logger";
 import { ConflictError, ValidationError } from "../lib/errors";
+import { processWithConcurrency } from "../lib/concurrency";
+import { toBatches } from "../lib/collection";
 import * as knowledgeRepo from "../repositories/knowledge.repo";
 import * as buildRepo from "../repositories/knowledge-build.repo";
 import { extractKnowledge } from "../ai/extract-knowledge";
 
+export type TagFilter = ReadonlyArray<string>;
+
 const log = createLogger("graph-builder");
 
-const MIN_CHUNKS = 5;
-const CHUNKS_PER_BATCH = 4;
-const MAX_VIDEOS_PER_BUILD = 50;
-const MAX_CONCURRENT_VIDEOS = 3;
+const MIN_VIDEOS = 3;
+const DEFAULT_BUILD_LIMIT = 50;
+const VIDEOS_PER_BATCH = 20;
+const MAX_CONCURRENT_BATCHES = 2;
 
 export interface BuildStatus {
   readonly buildId: string;
@@ -41,6 +45,8 @@ export async function startBuild(
   channelId: string,
   category: string,
   force: boolean,
+  limit = DEFAULT_BUILD_LIMIT,
+  tags?: TagFilter,
 ): Promise<BuildStatus> {
   const existing = activeBuilds.get(channelId);
   if (existing?.status === "running") {
@@ -56,32 +62,33 @@ export async function startBuild(
     ]);
   }
 
-  const allChunks = await knowledgeRepo.findChunksWithVideos(channelId);
-  if (allChunks.length < MIN_CHUNKS) {
+  const allSummaries = tags && tags.length > 0
+    ? await knowledgeRepo.findVideoSummariesByTags(channelId, tags)
+    : await knowledgeRepo.findVideoSummaries(channelId);
+  if (allSummaries.length < MIN_VIDEOS) {
     throw new ValidationError(
-      `Not enough transcripts. Need at least ${MIN_CHUNKS} chunks, have ${allChunks.length}. Fetch more transcripts first.`,
+      `Not enough transcripts with summaries. Need at least ${MIN_VIDEOS}, have ${allSummaries.length}. Fetch more transcripts first.`,
     );
   }
 
   const processedIds = await buildRepo.findProcessedVideoIds(channelId);
-  const videoChunks = Map.groupBy(allChunks, (c) => c.video_id);
-  const videoIds = [...videoChunks.keys()]
-    .filter((id) => !processedIds.has(id))
-    .slice(0, MAX_VIDEOS_PER_BUILD);
+  const unprocessed = allSummaries
+    .filter((s) => !processedIds.has(s.video_id))
+    .slice(0, limit);
 
-  if (videoIds.length === 0) {
+  if (unprocessed.length === 0) {
     const latest = await buildRepo.findLatestBuild(channelId);
     if (latest) return toBuildStatus(latest);
     throw new ValidationError("No new videos to process. Graph is up to date.");
   }
 
-  const buildRow = await buildRepo.createBuild(channelId, videoIds.length);
+  const buildRow = await buildRepo.createBuild(channelId, unprocessed.length);
 
   const status: BuildStatus = {
     buildId: buildRow.id,
     channelId,
     status: "running",
-    totalVideos: videoIds.length,
+    totalVideos: unprocessed.length,
     processedVideos: 0,
     startedAt: buildRow.started_at.toISOString(),
     completedAt: null,
@@ -89,7 +96,7 @@ export async function startBuild(
   };
   activeBuilds.set(channelId, status);
 
-  runBuild(buildRow.id, channelId, category, videoIds, videoChunks).catch((err) => {
+  runBuild(buildRow.id, channelId, category, unprocessed).catch((err) => {
     log.error("background build crashed", { channelId, error: err instanceof Error ? err.message : String(err) });
   });
 
@@ -109,19 +116,22 @@ async function runBuild(
   buildId: string,
   channelId: string,
   category: string,
-  videoIds: ReadonlyArray<string>,
-  videoChunks: Map<string, ReadonlyArray<knowledgeRepo.ChunkWithVideo>>,
+  summaries: ReadonlyArray<knowledgeRepo.VideoSummary>,
 ): Promise<void> {
-  const done = log.time(`build [${channelId}] ${videoIds.length} videos`);
+  const done = log.time(`build [${channelId}] ${summaries.length} videos`);
   let processed = 0;
 
   try {
-    await processWithConcurrency(videoIds, MAX_CONCURRENT_VIDEOS, async (videoId) => {
-      const chunks = videoChunks.get(videoId) ?? [];
-      await processVideo(channelId, chunks, category);
-      await buildRepo.markVideoProcessed(channelId, videoId);
+    const batches = toBatches(summaries, VIDEOS_PER_BATCH);
 
-      processed += 1;
+    await processWithConcurrency(batches, MAX_CONCURRENT_BATCHES, async (batch) => {
+      await processBatch(channelId, batch, category);
+
+      for (const s of batch) {
+        await buildRepo.markVideoProcessed(channelId, s.video_id);
+      }
+
+      processed += batch.length;
       await buildRepo.updateProgress(buildId, processed);
       activeBuilds.set(channelId, {
         ...activeBuilds.get(channelId)!,
@@ -151,78 +161,73 @@ async function runBuild(
   }
 }
 
-export async function processVideo(
+export async function processBatch(
   channelId: string,
-  chunks: ReadonlyArray<knowledgeRepo.ChunkWithVideo>,
+  summaries: ReadonlyArray<knowledgeRepo.VideoSummary>,
   category: string,
 ): Promise<void> {
-  const videoTitle = chunks[0]?.video_title ?? "Unknown";
-  const nodeMap = new Map<string, knowledgeRepo.KnowledgeNodeRow>();
+  if (summaries.length === 0) return;
 
-  for (let i = 0; i < chunks.length; i += CHUNKS_PER_BATCH) {
-    const batch = chunks.slice(i, i + CHUNKS_PER_BATCH);
+  const videos = summaries.map((s) => ({ title: s.video_title, summary: s.content }));
 
-    try {
-      const result = await extractKnowledge(
-        videoTitle,
-        category,
-        batch.map((c) => ({ content: c.content, chunkId: c.id })),
-      );
+  try {
+    const result = await extractKnowledge(videos, category);
 
-      const upsertedNodes = await knowledgeRepo.upsertNodes(
-        channelId,
-        result.entities.map((e) => ({
-          label: e.label,
-          type: e.type,
-          description: e.description,
-        })),
-      );
+    const upsertedNodes = await knowledgeRepo.upsertNodes(
+      channelId,
+      result.entities.map((e) => ({
+        label: e.label,
+        type: e.type,
+        description: e.description,
+      })),
+    );
 
-      for (const node of upsertedNodes) {
-        nodeMap.set(node.normalized_label, node);
-      }
-
-      await Promise.all(
-        result.relationships.map((rel) =>
-          knowledgeRepo.upsertEdge({
-            channelId,
-            sourceLabel: rel.source,
-            targetLabel: rel.target,
-            relationship: rel.type,
-            context: rel.context,
-          }),
-        ),
-      );
-
-      await linkEntityMentions(result.entities, batch, nodeMap);
-    } catch (err) {
-      log.warn("extraction failed for batch, skipping", {
-        videoTitle,
-        error: err instanceof Error ? err.message : String(err),
-      });
+    const nodeMap = new Map<string, knowledgeRepo.KnowledgeNodeRow>();
+    for (const node of upsertedNodes) {
+      nodeMap.set(node.normalized_label, node);
     }
+
+    await Promise.all(
+      result.relationships.map((rel) =>
+        knowledgeRepo.upsertEdge({
+          channelId,
+          sourceLabel: rel.source,
+          targetLabel: rel.target,
+          relationship: rel.type,
+          context: rel.context,
+        }),
+      ),
+    );
+
+    await linkVideoRefs(result.entities, summaries, nodeMap);
+  } catch (err) {
+    log.warn("batch extraction failed, skipping", {
+      videos: summaries.length,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
-async function linkEntityMentions(
+async function linkVideoRefs(
   entities: ReadonlyArray<{ label: string }>,
-  batch: ReadonlyArray<knowledgeRepo.ChunkWithVideo>,
+  summaries: ReadonlyArray<knowledgeRepo.VideoSummary>,
   nodeMap: Map<string, knowledgeRepo.KnowledgeNodeRow>,
 ): Promise<void> {
   const refs: knowledgeRepo.VideoRefInsert[] = [];
+  const lowerContents = summaries.map((s) => s.content.toLowerCase());
 
   for (const entity of entities) {
     const node = nodeMap.get(knowledgeRepo.normalizeLabel(entity.label));
     if (!node) continue;
 
     const lowerLabel = entity.label.toLowerCase();
-    for (const chunk of batch) {
-      if (chunk.content.toLowerCase().includes(lowerLabel)) {
+    for (let i = 0; i < summaries.length; i++) {
+      if (lowerContents[i]!.includes(lowerLabel)) {
         refs.push({
           nodeId: node.id,
-          videoId: chunk.video_id,
-          chunkId: chunk.id,
-          context: extractSnippet(chunk.content, entity.label),
+          videoId: summaries[i]!.video_id,
+          chunkId: null,
+          context: extractSnippet(summaries[i]!.content, entity.label),
           relevance: 1.0,
         });
       }
@@ -241,20 +246,4 @@ function extractSnippet(content: string, term: string): string {
   const prefix = start > 0 ? "..." : "";
   const suffix = end < content.length ? "..." : "";
   return `${prefix}${content.slice(start, end)}${suffix}`;
-}
-
-async function processWithConcurrency<T>(
-  items: ReadonlyArray<T>,
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  const executing = new Set<Promise<void>>();
-  for (const item of items) {
-    const p = fn(item).then(() => { executing.delete(p); });
-    executing.add(p);
-    if (executing.size >= limit) {
-      await Promise.race(executing);
-    }
-  }
-  await Promise.all(executing);
 }

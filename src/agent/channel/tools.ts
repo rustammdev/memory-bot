@@ -7,7 +7,7 @@ import * as gapRepo from "../../repositories/content-gap.repo";
 import * as knowledgeRepo from "../../repositories/knowledge.repo";
 import { deduplicateByKey } from "../../lib/collection";
 import { searchByChannelId } from "../../services/search.service";
-import { findLearningPathByChannelId } from "../../services/knowledge.service";
+import { findLearningPathByChannelId, buildChannelGraphById } from "../../services/knowledge.service";
 import { createLogger } from "../../lib/logger";
 import { formatCompactNumber, formatDuration } from "../../lib/format";
 import { fetchTranscriptContent } from "../transcript";
@@ -300,5 +300,39 @@ export function createChannelTools(channelId: string) {
     },
   );
 
-  return [listVideos, getTranscript, semanticSearch, getChannelInfo, getLatestDigest, findContentGaps, exploreKnowledgeGraph, findLearningPathTool];
+  const buildKnowledgeGraph = tool(
+    async ({ tags, force }) => {
+      const done = log.time(`build_knowledge_graph tags=${tags?.join(",") ?? "*"}`);
+      try {
+        const status = await buildChannelGraphById(channelId, force ?? false, undefined, tags);
+        if (status.status === "running") {
+          const tagInfo = tags && tags.length > 0 ? ` for tags: ${tags.join(", ")}` : "";
+          return `Knowledge graph build started${tagInfo}. Build ID: ${status.buildId}. Processing ${status.totalVideos} videos in the background. Check status with get_build_status tool or GET /api/knowledge/build.`;
+        }
+        return `Knowledge graph is already up to date. Total videos processed: ${status.processedVideos}.`;
+      } catch (err) {
+        return `Failed to start knowledge build: ${err instanceof Error ? err.message : String(err)}`;
+      } finally {
+        done();
+      }
+    },
+    {
+      name: "build_knowledge_graph",
+      description:
+        "Trigger a knowledge graph build for this channel. Use when the user asks to 'build knowledge', 'create knowledge graph', or 'analyze topics'. Optionally filter by tags to build topic-specific knowledge (e.g. tags=['react','typescript'] only processes videos tagged with those topics). Returns build status.",
+      schema: z.object({
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe("Optional topic tags to filter videos (e.g. ['react', 'typescript']). Omit to build from all transcribed videos."),
+        force: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe("If true, clears existing graph and rebuilds from scratch"),
+      }),
+    },
+  );
+
+  return [listVideos, getTranscript, semanticSearch, getChannelInfo, getLatestDigest, findContentGaps, exploreKnowledgeGraph, findLearningPathTool, buildKnowledgeGraph];
 }

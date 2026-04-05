@@ -5,9 +5,19 @@ export interface VideoInfo {
   readonly viewCount: number | null;
   readonly duration: number | null;
   readonly durationFormatted: string | null;
+  readonly uploadedAt: Date | null;
+}
+
+export interface VideoThumbnails {
+  readonly default: string | null;
+  readonly medium: string | null;
+  readonly high: string | null;
+  readonly maxres: string | null;
 }
 
 export interface VideoApiItem extends VideoInfo {
+  readonly thumbnails: VideoThumbnails;
+  readonly tags: ReadonlyArray<string>;
   readonly hasTranscript: boolean;
 }
 
@@ -36,4 +46,7 @@ export interface ChannelVideosResponse {
   readonly totalVideos: number;
   readonly metadata: ChannelMetadataSummary | null;
   readonly videos: ReadonlyArray<VideoApiItem>;
+  readonly page: number;
+  readonly limit: number;
+  readonly hasMore: boolean;
 }

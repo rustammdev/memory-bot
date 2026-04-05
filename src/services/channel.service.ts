@@ -26,6 +26,8 @@ interface MetadataVersionsResponse {
 
 interface VideosFilter {
   readonly transcribedOnly?: boolean;
+  readonly page?: number;
+  readonly limit?: number;
 }
 
 function toMetadataInsert(
@@ -56,30 +58,15 @@ function saveMetadataInBackground(
     });
 }
 
-export async function getChannelVideos(
-  channelInput: string | null,
-  filter: VideosFilter = {},
-): Promise<ChannelVideosResponse> {
-  const done = log.time(`getChannelVideos [${channelInput}]`);
-  const existing = await resolveChannel(channelInput);
-  if (existing) {
-    const [allVideos, metadata, transcribedIds] = await Promise.all([
-      videoRepo.findByChannelId(existing.id),
-      metadataRepo.findLatest(existing.id),
-      filter.transcribedOnly
-        ? transcriptRepo.findTranscribedVideoIds(existing.id)
-        : Promise.resolve(new Set<string>()),
-    ]);
-    const videos = filter.transcribedOnly
-      ? allVideos.filter((v) => transcribedIds.has(v.id))
-      : allVideos;
-    done();
-    return toApiResponse(existing, videos, metadata, transcribedIds);
-  }
+interface SyncResult {
+  readonly channel: channelRepo.ChannelRow;
+  readonly videos: ReadonlyArray<videoRepo.VideoRow>;
+}
 
+async function syncChannel(channelInput: string): Promise<SyncResult> {
   const [ytData, images] = await Promise.all([
-    fetchChannelVideos(channelInput!),
-    fetchChannelImages(channelInput!),
+    fetchChannelVideos(channelInput),
+    fetchChannelImages(channelInput),
   ]);
 
   const channel = await channelRepo.upsert({
@@ -100,21 +87,53 @@ export async function getChannelVideos(
       viewCount: v.viewCount ?? 0,
       durationSec: v.duration,
       durationFormatted: v.durationFormatted,
+      uploadedAt: v.uploadedAt,
     })),
   );
 
-  const recentTitles = ytData.videos.map((v) => v.title);
-  saveMetadataInBackground(channel.id, ytData.channelName, recentTitles);
+  saveMetadataInBackground(channel.id, ytData.channelName, ytData.videos.map((v) => v.title));
+
+  return { channel, videos };
+}
+
+export async function getChannelVideos(
+  channelInput: string | null,
+  filter: VideosFilter = {},
+): Promise<ChannelVideosResponse> {
+  const page = filter.page ?? 1;
+  const limit = filter.limit ?? 10;
+  const offset = (page - 1) * limit;
+  const done = log.time(`getChannelVideos [${channelInput}] page=${page}`);
+
+  const existing = await resolveChannel(channelInput);
+  if (existing) {
+    const [videos, metadata, total, transcribedIds] = await Promise.all([
+      videoRepo.findByChannelIdPaginated(existing.id, limit, offset),
+      metadataRepo.findLatest(existing.id),
+      videoRepo.countByChannelId(existing.id),
+      transcriptRepo.findTranscribedVideoIds(existing.id),
+    ]);
+    done();
+    return toApiResponse(existing, videos, metadata, transcribedIds, { page, limit, total });
+  }
+
+  const { channel, videos: allVideos } = await syncChannel(channelInput!);
+  const paginatedVideos = allVideos.slice(offset, offset + limit);
 
   done();
-  return toApiResponse(channel, videos, null);
+  return toApiResponse(channel, paginatedVideos, null, new Set(), { page, limit, total: allVideos.length });
 }
 
 export async function getChannelMetadata(
   channelInput: string | null,
   version?: number,
 ): Promise<MetadataResponse> {
-  const channel = await requireChannel(channelInput);
+  let channel = await resolveChannel(channelInput);
+  if (!channel) {
+    log.info(`channel not in DB, auto-syncing`, { input: channelInput });
+    const result = await syncChannel(channelInput!);
+    channel = result.channel;
+  }
 
   const base = {
     channelName: channel.name,

@@ -1,5 +1,5 @@
 import { ok, fail } from "../lib/response";
-import { queryParam, requireParam } from "../lib/request";
+import { queryParam, queryParamInt, requireParam } from "../lib/request";
 import {
   buildChannelGraph,
   getChannelBuildStatus,
@@ -27,7 +27,11 @@ export const knowledgeRoutes = {
     POST: async (req: Request) => {
       try {
         const force = queryParam(req, "force") === "true";
-        const result = await buildChannelGraph(queryParam(req, "channel"), force);
+        const limitRaw = queryParamInt(req, "limit");
+        const limit = limitRaw ? Math.max(1, Math.min(500, limitRaw)) : undefined;
+        const tagsRaw = queryParam(req, "tags");
+        const tags = tagsRaw ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean) : undefined;
+        const result = await buildChannelGraph(queryParam(req, "channel"), force, limit, tags);
         return ok(result, 202);
       } catch (err) {
         return fail(err);

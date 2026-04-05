@@ -45,7 +45,7 @@ describe("createChannelTools", () => {
   test("returns 8 tools", () => {
     clearMockRows();
     const tools = createChannelTools("ch-1");
-    expect(tools.length).toBe(8);
+    expect(tools.length).toBe(9);
   });
 
   test("tools have correct names", () => {

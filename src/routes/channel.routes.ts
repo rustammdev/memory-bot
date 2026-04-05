@@ -29,7 +29,11 @@ export const channelRoutes = {
     GET: async (req: Request) => {
       try {
         const transcribed = queryParam(req, "transcribed") === "true";
-        const result = await getChannelVideos(queryParam(req, "channel"), { transcribedOnly: transcribed });
+        const result = await getChannelVideos(queryParam(req, "channel"), {
+          transcribedOnly: transcribed,
+          page: queryParamInt(req, "page"),
+          limit: queryParamInt(req, "limit"),
+        });
         return ok(result);
       } catch (err) {
         return fail(err);

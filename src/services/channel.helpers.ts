@@ -28,12 +28,23 @@ export async function requireChannel(
   return channel;
 }
 
+interface PaginationInfo {
+  readonly page: number;
+  readonly limit: number;
+  readonly total: number;
+}
+
 export function toApiResponse(
   channel: channelRepo.ChannelRow,
   videos: ReadonlyArray<videoRepo.VideoRow>,
   metadata: metadataRepo.MetadataRow | null,
   transcribedIds: ReadonlySet<string> = new Set(),
+  pagination?: PaginationInfo,
 ): ChannelVideosResponse {
+  const page = pagination?.page ?? 1;
+  const limit = pagination?.limit ?? videos.length;
+  const total = pagination?.total ?? videos.length;
+
   return {
     channelName: channel.name,
     channelId: channel.youtube_id,
@@ -57,7 +68,18 @@ export function toApiResponse(
       viewCount: v.view_count,
       duration: v.duration_sec,
       durationFormatted: v.duration_formatted,
+      uploadedAt: v.uploaded_at,
+      thumbnails: {
+        default: v.thumbnail_default,
+        medium: v.thumbnail_medium,
+        high: v.thumbnail_high,
+        maxres: v.thumbnail_maxres,
+      },
+      tags: v.tags,
       hasTranscript: transcribedIds.has(v.id),
     })),
+    page,
+    limit,
+    hasMore: page * limit < total,
   };
 }

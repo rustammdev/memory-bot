@@ -1,0 +1,3 @@
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS tags text[] NOT NULL DEFAULT '{}';
+
+CREATE INDEX IF NOT EXISTS idx_videos_tags ON videos USING GIN (tags);

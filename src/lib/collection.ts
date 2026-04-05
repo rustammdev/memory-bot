@@ -11,3 +11,14 @@ export function deduplicateByKey<T>(
   }
   return [...seen.values()];
 }
+
+export function toBatches<T>(
+  items: ReadonlyArray<T>,
+  size: number,
+): ReadonlyArray<ReadonlyArray<T>> {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    batches.push(items.slice(i, i + size));
+  }
+  return batches;
+}

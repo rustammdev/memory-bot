@@ -2,7 +2,9 @@ import { deduplicateByKey } from "../lib/collection";
 import { requireChannel } from "./channel.helpers";
 import * as knowledgeRepo from "../repositories/knowledge.repo";
 import * as metadataRepo from "../repositories/metadata.repo";
-import { startBuild, getBuildStatus, type BuildStatus } from "./graph-builder";
+import { startBuild, getBuildStatus, type BuildStatus, type TagFilter } from "./graph-builder";
+
+export type { TagFilter };
 
 export interface GraphNode {
   readonly id: string;
@@ -94,12 +96,23 @@ export { type BuildStatus } from "./graph-builder";
 export async function buildChannelGraph(
   channelInput: string | null,
   force = false,
+  limit?: number,
+  tags?: TagFilter,
 ): Promise<BuildStatus> {
   const channel = await requireChannel(channelInput);
-  const metadata = await metadataRepo.findLatest(channel.id);
+  return buildChannelGraphById(channel.id, force, limit, tags);
+}
+
+export async function buildChannelGraphById(
+  channelId: string,
+  force = false,
+  limit?: number,
+  tags?: TagFilter,
+): Promise<BuildStatus> {
+  const metadata = await metadataRepo.findLatest(channelId);
   const category = metadata?.category ?? "other";
 
-  return startBuild(channel.id, category, force);
+  return startBuild(channelId, category, force, limit, tags);
 }
 
 export async function getChannelBuildStatus(

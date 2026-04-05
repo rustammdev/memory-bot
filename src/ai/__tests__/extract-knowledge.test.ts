@@ -1,29 +1,37 @@
 import { describe, test, expect, mock } from "bun:test";
 
-const validResponse = JSON.stringify({
-  entities: [
-    { label: "React Hooks", type: "concept", description: "State management in React" },
-    { label: "TypeScript", type: "language", description: "Typed JavaScript" },
-    { label: "useState", type: "method", description: "React state hook" },
-  ],
-  relationships: [
-    { source: "React Hooks", target: "useState", type: "part_of", context: "useState is a hook" },
-    { source: "TypeScript", target: "React Hooks", type: "used_with", context: "TS with React" },
-  ],
-});
+const chatCompletionFn = mock(() => Promise.resolve("{}"));
 
 mock.module("../client", () => ({
-  chatCompletion: () => Promise.resolve(validResponse),
+  chatCompletion: chatCompletionFn,
   parseJsonResponse: (content: string) => JSON.parse(content),
 }));
 
 import { extractKnowledge } from "../extract-knowledge";
 
+function setMockResponse(data: unknown): void {
+  const json = JSON.stringify(data);
+  chatCompletionFn.mockImplementation(() => Promise.resolve(json));
+}
+
 describe("extractKnowledge", () => {
-  test("extracts entities and relationships from chunks", async () => {
-    const result = await extractKnowledge("React Tutorial", "technology", [
-      { content: "React Hooks allow you to use state in functional components", chunkId: "c1" },
-    ]);
+  test("extracts entities and relationships from summaries", async () => {
+    setMockResponse({
+      entities: [
+        { label: "React Hooks", type: "concept", description: "State management in React" },
+        { label: "TypeScript", type: "language", description: "Typed JavaScript" },
+        { label: "useState", type: "method", description: "React state hook" },
+      ],
+      relationships: [
+        { source: "React Hooks", target: "useState", type: "part_of", context: "useState is a hook" },
+        { source: "TypeScript", target: "React Hooks", type: "used_with", context: "TS with React" },
+      ],
+    });
+
+    const result = await extractKnowledge(
+      [{ title: "React Tutorial", summary: "React Hooks allow you to use state in functional components" }],
+      "technology",
+    );
 
     expect(result.entities.length).toBe(3);
     expect(result.entities[0]!.label).toBe("React Hooks");
@@ -34,7 +42,7 @@ describe("extractKnowledge", () => {
   });
 
   test("filters entities with invalid types", async () => {
-    const responseWithBadTypes = JSON.stringify({
+    setMockResponse({
       entities: [
         { label: "React", type: "concept", description: "UI library" },
         { label: "Bad", type: "invalid_type", description: "Should be filtered" },
@@ -42,25 +50,20 @@ describe("extractKnowledge", () => {
       relationships: [],
     });
 
-    mock.module("../client", () => ({
-      chatCompletion: () => Promise.resolve(responseWithBadTypes),
-      parseJsonResponse: (content: string) => JSON.parse(content),
-    }));
-
-    const { extractKnowledge: extract2 } = await import("../extract-knowledge");
-    const result = await extract2("Video", "tech", [
-      { content: "React is great", chunkId: "c1" },
-    ]);
+    const result = await extractKnowledge(
+      [{ title: "Video", summary: "React is great" }],
+      "tech",
+    );
 
     expect(result.entities.length).toBe(1);
     expect(result.entities[0]!.label).toBe("React");
   });
 
   test("filters relationships with invalid types", async () => {
-    const responseWithBadRel = JSON.stringify({
+    setMockResponse({
       entities: [
-        { label: "React", type: "framework", description: "UI lib" },
-        { label: "Vue", type: "framework", description: "UI lib" },
+        { label: "React", type: "framework", description: "A JavaScript library for building user interfaces" },
+        { label: "Vue", type: "framework", description: "A progressive JavaScript framework for building UIs" },
       ],
       relationships: [
         { source: "React", target: "Vue", type: "bad_relation", context: "both UI" },
@@ -68,59 +71,44 @@ describe("extractKnowledge", () => {
       ],
     });
 
-    mock.module("../client", () => ({
-      chatCompletion: () => Promise.resolve(responseWithBadRel),
-      parseJsonResponse: (content: string) => JSON.parse(content),
-    }));
-
-    const { extractKnowledge: extract3 } = await import("../extract-knowledge");
-    const result = await extract3("Frameworks", "tech", [
-      { content: "React vs Vue", chunkId: "c1" },
-    ]);
+    const result = await extractKnowledge(
+      [{ title: "Frameworks", summary: "React vs Vue" }],
+      "tech",
+    );
 
     expect(result.relationships.length).toBe(1);
     expect(result.relationships[0]!.type).toBe("alternative_to");
   });
 
   test("filters self-referencing relationships", async () => {
-    const responseWithSelfRef = JSON.stringify({
-      entities: [{ label: "React", type: "framework", description: "UI" }],
+    setMockResponse({
+      entities: [{ label: "React", type: "framework", description: "A JavaScript library for building UIs" }],
       relationships: [
         { source: "React", target: "React", type: "related_to", context: "self" },
       ],
     });
 
-    mock.module("../client", () => ({
-      chatCompletion: () => Promise.resolve(responseWithSelfRef),
-      parseJsonResponse: (content: string) => JSON.parse(content),
-    }));
-
-    const { extractKnowledge: extract4 } = await import("../extract-knowledge");
-    const result = await extract4("Video", "tech", [
-      { content: "React", chunkId: "c1" },
-    ]);
+    const result = await extractKnowledge(
+      [{ title: "Video", summary: "React" }],
+      "tech",
+    );
 
     expect(result.relationships.length).toBe(0);
   });
 
   test("filters entities with too short labels", async () => {
-    const responseWithShort = JSON.stringify({
+    setMockResponse({
       entities: [
-        { label: "A", type: "concept", description: "Too short" },
-        { label: "AI", type: "concept", description: "Just right" },
+        { label: "A", type: "concept", description: "A single letter label that is too short" },
+        { label: "AI", type: "concept", description: "Artificial intelligence, machine learning systems" },
       ],
       relationships: [],
     });
 
-    mock.module("../client", () => ({
-      chatCompletion: () => Promise.resolve(responseWithShort),
-      parseJsonResponse: (content: string) => JSON.parse(content),
-    }));
-
-    const { extractKnowledge: extract5 } = await import("../extract-knowledge");
-    const result = await extract5("Video", "tech", [
-      { content: "AI and stuff", chunkId: "c1" },
-    ]);
+    const result = await extractKnowledge(
+      [{ title: "Video", summary: "AI and stuff" }],
+      "tech",
+    );
 
     expect(result.entities.length).toBe(1);
     expect(result.entities[0]!.label).toBe("AI");
@@ -128,42 +116,55 @@ describe("extractKnowledge", () => {
 
   test("truncates long descriptions", async () => {
     const longDesc = "x".repeat(300);
-    const response = JSON.stringify({
+    setMockResponse({
       entities: [{ label: "React", type: "framework", description: longDesc }],
       relationships: [],
     });
 
-    mock.module("../client", () => ({
-      chatCompletion: () => Promise.resolve(response),
-      parseJsonResponse: (content: string) => JSON.parse(content),
-    }));
-
-    const { extractKnowledge: extract6 } = await import("../extract-knowledge");
-    const result = await extract6("Video", "tech", [
-      { content: "React", chunkId: "c1" },
-    ]);
+    const result = await extractKnowledge(
+      [{ title: "Video", summary: "React" }],
+      "tech",
+    );
 
     expect(result.entities[0]!.description.length).toBeLessThanOrEqual(200);
   });
 
   test("filters relationships referencing non-existent entities", async () => {
-    const response = JSON.stringify({
-      entities: [{ label: "React", type: "framework", description: "UI" }],
+    setMockResponse({
+      entities: [{ label: "React", type: "framework", description: "A JavaScript library for building UIs" }],
       relationships: [
         { source: "React", target: "Vue", type: "alternative_to", context: "Vue not in entities" },
       ],
     });
 
-    mock.module("../client", () => ({
-      chatCompletion: () => Promise.resolve(response),
-      parseJsonResponse: (content: string) => JSON.parse(content),
-    }));
-
-    const { extractKnowledge: extract7 } = await import("../extract-knowledge");
-    const result = await extract7("Video", "tech", [
-      { content: "React", chunkId: "c1" },
-    ]);
+    const result = await extractKnowledge(
+      [{ title: "Video", summary: "React" }],
+      "tech",
+    );
 
     expect(result.relationships.length).toBe(0);
+  });
+
+  test("handles multiple videos in single batch", async () => {
+    setMockResponse({
+      entities: [
+        { label: "React", type: "framework", description: "A JavaScript library for building user interfaces" },
+        { label: "TypeScript", type: "language", description: "A typed superset of JavaScript that compiles to plain JS" },
+      ],
+      relationships: [
+        { source: "TypeScript", target: "React", type: "used_with", context: "TS with React" },
+      ],
+    });
+
+    const result = await extractKnowledge(
+      [
+        { title: "React Tutorial", summary: "React Hooks for state management" },
+        { title: "TS Basics", summary: "TypeScript generics and type inference" },
+      ],
+      "technology",
+    );
+
+    expect(result.entities.length).toBe(2);
+    expect(result.relationships.length).toBe(1);
   });
 });

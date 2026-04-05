@@ -10,10 +10,19 @@ interface YtDlpEntry {
   readonly view_count: number | null;
   readonly duration: number | null;
   readonly duration_string: string | null;
+  readonly upload_date: string | null;
   readonly playlist_title: string;
   readonly playlist_channel_id: string;
   readonly playlist_uploader_id: string;
   readonly n_entries: number;
+}
+
+function parseUploadDate(raw: string | null | undefined): Date | null {
+  if (!raw || raw.length !== 8) return null;
+  const y = raw.slice(0, 4);
+  const m = raw.slice(4, 6);
+  const d = raw.slice(6, 8);
+  return new Date(`${y}-${m}-${d}T00:00:00Z`);
 }
 
 function toVideoInfo(entry: YtDlpEntry): VideoInfo {
@@ -24,6 +33,7 @@ function toVideoInfo(entry: YtDlpEntry): VideoInfo {
     viewCount: entry.view_count ?? null,
     duration: entry.duration ?? null,
     durationFormatted: entry.duration_string ?? null,
+    uploadedAt: parseUploadDate(entry.upload_date),
   };
 }
 

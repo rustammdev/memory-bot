@@ -261,37 +261,50 @@ export async function getGraphStats(channelId: string): Promise<GraphStats> {
   };
 }
 
-export interface ChunkWithVideo {
-  readonly id: string;
+export interface VideoSummary {
   readonly video_id: string;
   readonly content: string;
   readonly video_title: string;
   readonly youtube_video_id: string;
 }
 
-export async function findChunksWithVideos(
+export async function findVideoSummaries(
   channelId: string,
-): Promise<ReadonlyArray<ChunkWithVideo>> {
+): Promise<ReadonlyArray<VideoSummary>> {
   return db`
-    SELECT ce.id, ce.video_id, ce.content, v.title AS video_title, v.youtube_video_id
-    FROM chunk_embeddings ce
-    JOIN videos v ON v.id = ce.video_id
-    WHERE ce.channel_id = ${channelId}
-    ORDER BY v.uploaded_at DESC NULLS LAST, ce.chunk_index ASC
-  ` as Promise<ReadonlyArray<ChunkWithVideo>>;
+    SELECT t.video_id, t.summary AS content, v.title AS video_title, v.youtube_video_id
+    FROM transcripts t
+    JOIN videos v ON v.id = t.video_id
+    WHERE v.channel_id = ${channelId} AND t.summary IS NOT NULL
+    ORDER BY v.uploaded_at DESC NULLS LAST
+  ` as Promise<ReadonlyArray<VideoSummary>>;
 }
 
-export async function findChunksByVideoId(
+export async function findVideoSummariesByTags(
+  channelId: string,
+  tags: ReadonlyArray<string>,
+): Promise<ReadonlyArray<VideoSummary>> {
+  return db`
+    SELECT t.video_id, t.summary AS content, v.title AS video_title, v.youtube_video_id
+    FROM transcripts t
+    JOIN videos v ON v.id = t.video_id
+    WHERE v.channel_id = ${channelId}
+      AND t.summary IS NOT NULL
+      AND v.tags && ${db.array([...tags])}
+    ORDER BY v.uploaded_at DESC NULLS LAST
+  ` as Promise<ReadonlyArray<VideoSummary>>;
+}
+
+export async function findVideoSummaryById(
   channelId: string,
   videoId: string,
-): Promise<ReadonlyArray<ChunkWithVideo>> {
+): Promise<ReadonlyArray<VideoSummary>> {
   return db`
-    SELECT ce.id, ce.video_id, ce.content, v.title AS video_title, v.youtube_video_id
-    FROM chunk_embeddings ce
-    JOIN videos v ON v.id = ce.video_id
-    WHERE ce.channel_id = ${channelId} AND ce.video_id = ${videoId}
-    ORDER BY ce.chunk_index ASC
-  ` as Promise<ReadonlyArray<ChunkWithVideo>>;
+    SELECT t.video_id, t.summary AS content, v.title AS video_title, v.youtube_video_id
+    FROM transcripts t
+    JOIN videos v ON v.id = t.video_id
+    WHERE v.channel_id = ${channelId} AND t.video_id = ${videoId} AND t.summary IS NOT NULL
+  ` as Promise<ReadonlyArray<VideoSummary>>;
 }
 
 export async function deleteChannelGraph(channelId: string): Promise<void> {
