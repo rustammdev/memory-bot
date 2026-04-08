@@ -20,6 +20,7 @@ let initPromise: Promise<void> | null = null;
 
 function getInstance(): Memory {
   if (!instance) {
+    log.info("creating mem0 instance");
     instance = new Memory(createMemoryConfig());
   }
   return instance;
@@ -59,8 +60,12 @@ export async function saveConversation(
       { userId: ctx.userId, agentId: ctx.agentId },
     );
 
-    const count = result?.results?.length ?? 0;
-    log.info("memories saved", { userId: ctx.userId, extracted: count });
+    const extracted = result?.results ?? [];
+    log.info("memories saved", {
+      userId: ctx.userId,
+      extracted: extracted.length,
+      samples: extracted.slice(0, 2).map((m) => m.memory?.slice(0, 60)),
+    });
     done();
   } catch (err) {
     log.error("save failed", { userId: ctx.userId, err: String(err) });
@@ -83,7 +88,7 @@ export async function recallMemories(
     });
 
     const memories: MemoryItem[] = results?.results ?? [];
-    log.debug("search", { query: query.slice(0, 50), found: memories.length });
+    log.info("recall", { query: query.slice(0, 50), found: memories.length });
 
     if (memories.length === 0) return "";
 
@@ -112,17 +117,18 @@ export async function recallStructured(
     const relevant: MemoryItem[] = searchResults?.results ?? [];
     const all: MemoryItem[] = allMemories?.results ?? [];
 
-    log.debug("structured recall", {
-      query: query.slice(0, 50),
-      relevant: relevant.length,
-      total: all.length,
-    });
-
     const memories = relevant.length > 0
       ? relevant.map((m, i) => `${i + 1}. ${m.memory}`).join("\n")
       : "";
 
     const userProfile = buildUserProfile(all);
+
+    log.info("structured recall", {
+      query: query.slice(0, 50),
+      relevant: relevant.length,
+      total: all.length,
+      hasProfile: userProfile.length > 0,
+    });
 
     return { memories, userProfile };
   } catch (err) {

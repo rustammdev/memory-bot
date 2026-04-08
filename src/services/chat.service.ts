@@ -37,9 +37,10 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
   const memoryResult = await recallStructured(request.message, memoryCtx);
   recallDone();
 
-  log.debug("memory context", {
-    memories: memoryResult.memories.length > 0,
-    profile: memoryResult.userProfile.length > 0,
+  log.info("memory injected", {
+    user: request.userId,
+    hasMemories: memoryResult.memories.length > 0,
+    hasProfile: memoryResult.userProfile.length > 0,
   });
 
   const agent = await getChannelAgent(channel, memoryResult);
@@ -126,9 +127,10 @@ export async function multiChat(
   const memoryResult = await recallStructured(request.message, memoryCtx);
   recallDone();
 
-  log.debug("multi memory context", {
-    memories: memoryResult.memories.length > 0,
-    profile: memoryResult.userProfile.length > 0,
+  log.info("memory injected [multi]", {
+    user: request.userId,
+    hasMemories: memoryResult.memories.length > 0,
+    hasProfile: memoryResult.userProfile.length > 0,
   });
 
   const agent = await getMultiChannelAgent(channels, memoryResult);
