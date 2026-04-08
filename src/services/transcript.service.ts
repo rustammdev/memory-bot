@@ -106,6 +106,7 @@ export async function fetchAndSaveTranscript(
     transcriptRepo.upsert({
       videoId: video.id,
       content: raw.text,
+      segments: raw.segments,
       summary,
       language: raw.language,
     }),
@@ -120,6 +121,7 @@ export async function fetchAndSaveTranscript(
     videoId: video.id,
     transcriptId: saved.id,
     content: raw.text,
+    segments: raw.segments,
     importance,
   })
     .catch((err) => {

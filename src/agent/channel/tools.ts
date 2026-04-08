@@ -13,6 +13,14 @@ import { createGetTranscriptTool, formatVideoLines } from "../tool-helpers";
 
 const log = createLogger("agent-tool");
 
+function formatSeconds(totalSec: number): string {
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = Math.floor(totalSec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 export function createChannelTools(channelId: string) {
   const listVideos = tool(
     async ({ query, limit }) => {
@@ -49,38 +57,69 @@ export function createChannelTools(channelId: string) {
   const getTranscript = createGetTranscriptTool("list_videos");
 
   const semanticSearch = tool(
-    async ({ query, limit }) => {
-      const done = log.time(`semantic_search q="${query}"`);
+    async ({ queries, limit }) => {
+      const queryList = queries.length > 0 ? queries : [""];
+      const done = log.time(`semantic_search queries=${queryList.length}`);
       try {
-        const { results, metrics } = await premiumSearch(channelId, query, {
-          limit,
-          expandQueries: true,
-          includeContext: true,
-        });
+        // Run all queries in parallel
+        const allResponses = await Promise.all(
+          queryList.map((q) =>
+            premiumSearch(channelId, q, {
+              limit: Math.ceil(limit / queryList.length) + 2,
+              expandQueries: true,
+              includeContext: true,
+            }),
+          ),
+        );
 
-        if (results.length === 0) {
+        // Merge results, deduplicate by video+chunk
+        const seen = new Set<string>();
+        const merged: typeof allResponses[0]["results"][number][] = [];
+        for (const { results } of allResponses) {
+          for (const r of results) {
+            const key = `${r.videoId}:${r.content.slice(0, 80)}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              merged.push(r);
+            }
+          }
+        }
+
+        // Sort by score and take top N
+        merged.sort((a, b) => b.score - a.score);
+        const topResults = merged.slice(0, limit);
+
+        if (topResults.length === 0) {
           return "No relevant content found. The channel may not cover this topic, or transcripts haven't been fetched yet.";
         }
 
         const confidenceEmoji = { high: "●", medium: "◐", low: "○" } as const;
 
-        const lines = results.map((r, i) => {
+        const lines = topResults.map((r, i) => {
           const conf = confidenceEmoji[r.confidence];
           const similarity = (r.similarity * 100).toFixed(0);
           const sourceTag = r.sources.length > 1
             ? ` [${r.sources.join("+")}]`
             : "";
+          const timestamp = r.startSec != null
+            ? ` ⏱ ${formatSeconds(r.startSec)}`
+            : "";
           const snippet = r.expandedContent
             ? r.expandedContent.slice(0, 400)
             : r.content.slice(0, 300);
-          return `${i + 1}. ${conf} **${r.videoTitle}** — ${similarity}% match (confidence: ${r.confidence})${sourceTag}\n   "${snippet}..."`;
+          return `${i + 1}. ${conf} **${r.videoTitle}**${timestamp} — ${similarity}% match (${r.confidence})${sourceTag}\n   "${snippet}..."`;
         });
 
-        const searchInfo = metrics.queryExpansion
-          ? `\n_Search expanded with ${metrics.queryExpansion.variants.length} query variants and ${metrics.queryExpansion.keywords.length} keywords. ${metrics.totalCandidates} candidates evaluated in ${metrics.durationMs}ms._`
-          : "";
+        const totalCandidates = allResponses.reduce((s, r) => s + r.metrics.totalCandidates, 0);
+        const totalMs = allResponses.reduce((s, r) => s + r.metrics.durationMs, 0);
 
-        return `Found ${results.length} relevant segments:\n\n${lines.join("\n\n")}${searchInfo}`;
+        const searchInfo = queryList.length > 1
+          ? `\n_${queryList.length} parallel queries searched ${totalCandidates} candidates in ${totalMs}ms._`
+          : allResponses[0]?.metrics.queryExpansion
+            ? `\n_${totalCandidates} candidates evaluated in ${totalMs}ms._`
+            : "";
+
+        return `Found ${topResults.length} relevant segments:\n\n${lines.join("\n\n")}${searchInfo}`;
       } finally {
         done();
       }
@@ -88,15 +127,19 @@ export function createChannelTools(channelId: string) {
     {
       name: "semantic_search",
       description:
-        "Advanced hybrid search across all channel transcripts — combines semantic meaning, keyword matching, and multi-angle query expansion. Use as the FIRST tool when the user asks about a topic, concept, or question discussed in videos. Returns the most relevant transcript excerpts with confidence levels (high/medium/low), video references, and expanded context. Do NOT use for browsing videos by title — use list_videos instead.",
+        "Advanced hybrid search across all channel transcripts — combines semantic meaning, keyword matching, and multi-angle query expansion. Supports MULTIPLE parallel queries for complex questions. Use as the FIRST tool when the user asks about a topic, concept, or question. Returns transcript excerpts with confidence levels (high/medium/low), video timestamps, and expanded context. Do NOT use for browsing videos by title — use list_videos instead.",
       schema: z.object({
-        query: z.string().describe("The search query — describe what you want to find"),
+        queries: z
+          .array(z.string())
+          .min(1)
+          .max(5)
+          .describe("One or more search queries to run in parallel. Use multiple queries to search from different angles (e.g. ['React hooks tutorial', 'useState useEffect examples'])"),
         limit: z
           .number()
           .min(1)
           .max(15)
           .default(8)
-          .describe("Maximum number of results (default 8)"),
+          .describe("Maximum total results across all queries (default 8)"),
       }),
     },
   );

@@ -49,6 +49,7 @@ export interface PipelineResult {
   readonly score: number;
   readonly confidence: Confidence;
   readonly sources: ReadonlyArray<MatchSource>;
+  readonly startSec: number | null;
 }
 
 export interface MultiPipelineResult extends PipelineResult {
@@ -105,6 +106,7 @@ function vectorToCandidate(chunk: EnrichedChunk, source: MatchSource): FusionCan
     similarity: chunk.similarity,
     importance: chunk.importance,
     videoViewCount: chunk.videoViewCount,
+    startSec: chunk.startSec,
     source,
   };
 }
@@ -129,6 +131,7 @@ function keywordToCandidate(hit: KeywordHit): FusionCandidate {
     similarity: 0,
     importance: hit.importance,
     videoViewCount: hit.videoViewCount,
+    startSec: hit.startSec,
     source: "keyword",
   };
 }
@@ -267,6 +270,7 @@ export async function searchChannel(
       score: result.score,
       confidence: result.confidence,
       sources: result.sources,
+      startSec: result.startSec,
     })),
     metrics,
   };
@@ -359,6 +363,7 @@ export async function searchMultiChannel(
       score: result.score,
       confidence: result.confidence,
       sources: result.sources,
+      startSec: result.startSec,
       channelId: result.channelId ?? "",
       channelName: result.channelName ?? "",
     })),

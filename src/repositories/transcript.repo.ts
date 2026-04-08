@@ -1,9 +1,11 @@
 import { db } from "../db/connection";
+import type { TranscriptSegment } from "../yt/fetch-transcript";
 
 export interface TranscriptRow {
   readonly id: string;
   readonly video_id: string;
   readonly content: string;
+  readonly segments: ReadonlyArray<TranscriptSegment> | null;
   readonly summary: string | null;
   readonly language: string;
   readonly vectorized: boolean;
@@ -13,6 +15,7 @@ export interface TranscriptRow {
 export interface TranscriptInsert {
   readonly videoId: string;
   readonly content: string;
+  readonly segments?: ReadonlyArray<TranscriptSegment> | null;
   readonly summary?: string | null;
   readonly language?: string;
 }
@@ -40,16 +43,19 @@ export async function findTranscribedVideoIds(
 }
 
 export async function upsert(data: TranscriptInsert): Promise<TranscriptRow> {
+  const segmentsJson = data.segments ? JSON.stringify(data.segments) : null;
   const rows = await db`
-    INSERT INTO transcripts (video_id, content, summary, language)
+    INSERT INTO transcripts (video_id, content, segments, summary, language)
     VALUES (
       ${data.videoId},
       ${data.content},
+      ${segmentsJson},
       ${data.summary ?? null},
       ${data.language ?? "en"}
     )
     ON CONFLICT (video_id, language) DO UPDATE SET
       content = EXCLUDED.content,
+      segments = EXCLUDED.segments,
       summary = EXCLUDED.summary
     RETURNING *
   `;

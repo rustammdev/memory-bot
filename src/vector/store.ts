@@ -8,6 +8,7 @@ export interface ChunkRecord {
   readonly content: string;
   readonly embedding: number[];
   readonly importance: number;
+  readonly startSec: number | null;
 }
 
 export interface SearchResult {
@@ -27,6 +28,7 @@ export interface EnrichedChunk {
   readonly similarity: number;
   readonly importance: number;
   readonly videoViewCount: number;
+  readonly startSec: number | null;
 }
 
 export interface MultiEnrichedChunk extends EnrichedChunk {
@@ -43,6 +45,7 @@ export interface KeywordHit {
   readonly chunkIndex: number;
   readonly importance: number;
   readonly videoViewCount: number;
+  readonly startSec: number | null;
   readonly rank: number;
 }
 
@@ -84,16 +87,17 @@ export async function insertChunks(
       await tx`
         INSERT INTO chunk_embeddings (
           channel_id, video_id, transcript_id,
-          chunk_index, content, embedding, importance
+          chunk_index, content, embedding, importance, start_sec
         )
         VALUES (
           ${c.channelId}, ${c.videoId}, ${c.transcriptId},
-          ${c.chunkIndex}, ${c.content}, ${vectorStr}::vector, ${c.importance}
+          ${c.chunkIndex}, ${c.content}, ${vectorStr}::vector, ${c.importance}, ${c.startSec}
         )
         ON CONFLICT (transcript_id, chunk_index) DO UPDATE SET
           content   = EXCLUDED.content,
           embedding = EXCLUDED.embedding,
-          importance = EXCLUDED.importance
+          importance = EXCLUDED.importance,
+          start_sec = EXCLUDED.start_sec
       `;
     }
 
@@ -214,6 +218,7 @@ export async function vectorSearchEnriched(
         ce.transcript_id,
         ce.chunk_index,
         ce.importance,
+        ce.start_sec,
         v.title AS video_title,
         v.url AS video_url,
         v.view_count AS video_view_count,
@@ -243,6 +248,7 @@ export async function vectorSearchEnriched(
     similarity: num(r.similarity, "similarity"),
     importance: num(r.importance, "importance"),
     videoViewCount: num(r.video_view_count, "video_view_count"),
+    startSec: r.start_sec as number | null,
   }));
 }
 
@@ -268,6 +274,7 @@ export async function vectorSearchEnrichedMulti(
         ce.transcript_id,
         ce.chunk_index,
         ce.importance,
+        ce.start_sec,
         v.title AS video_title,
         v.url AS video_url,
         v.view_count AS video_view_count,
@@ -300,6 +307,7 @@ export async function vectorSearchEnrichedMulti(
     similarity: num(r.similarity, "similarity"),
     importance: num(r.importance, "importance"),
     videoViewCount: num(r.video_view_count, "video_view_count"),
+    startSec: r.start_sec as number | null,
   }));
 }
 
@@ -320,6 +328,7 @@ export async function keywordSearch(
       ce.transcript_id,
       ce.chunk_index,
       ce.importance,
+      ce.start_sec,
       v.title AS video_title,
       v.url AS video_url,
       v.view_count AS video_view_count,
@@ -341,6 +350,7 @@ export async function keywordSearch(
     chunkIndex: num(r.chunk_index, "chunk_index"),
     importance: num(r.importance, "importance"),
     videoViewCount: num(r.video_view_count, "video_view_count"),
+    startSec: r.start_sec as number | null,
     rank: num(r.rank, "rank"),
   }));
 }
@@ -363,6 +373,7 @@ export async function keywordSearchMulti(
       ce.transcript_id,
       ce.chunk_index,
       ce.importance,
+      ce.start_sec,
       v.title AS video_title,
       v.url AS video_url,
       v.view_count AS video_view_count,
@@ -387,6 +398,7 @@ export async function keywordSearchMulti(
     chunkIndex: num(r.chunk_index, "chunk_index"),
     importance: num(r.importance, "importance"),
     videoViewCount: num(r.video_view_count, "video_view_count"),
+    startSec: r.start_sec as number | null,
     rank: num(r.rank, "rank"),
   }));
 }

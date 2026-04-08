@@ -19,6 +19,7 @@ export interface FusionCandidate {
   readonly similarity: number;
   readonly importance: number;
   readonly videoViewCount: number;
+  readonly startSec: number | null;
   readonly source: MatchSource;
   readonly channelId?: string;
   readonly channelName?: string;
@@ -35,6 +36,7 @@ export interface RankedResult {
   readonly score: number;
   readonly confidence: Confidence;
   readonly sources: ReadonlyArray<MatchSource>;
+  readonly startSec: number | null;
   readonly channelId?: string;
   readonly channelName?: string;
 }
@@ -199,6 +201,7 @@ export function mmrDiversify(
       score: chosen.compositeScore,
       confidence: classifyConfidence(chosen.accumulator),
       sources: Array.from(chosen.accumulator.sources),
+      startSec: candidate.startSec,
       channelId: candidate.channelId,
       channelName: candidate.channelName,
     });

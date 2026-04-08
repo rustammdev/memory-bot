@@ -10,6 +10,14 @@ import type { MetadataRow } from "../../repositories/metadata.repo";
 
 const log = createLogger("multi-agent-tool");
 
+function formatSeconds(totalSec: number): string {
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = Math.floor(totalSec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 interface MultiToolContext {
   readonly channelIds: ReadonlyArray<string>;
   readonly channelsByUsername: ReadonlyMap<string, ChannelRow>;
@@ -44,10 +52,13 @@ export function createMultiChannelTools(ctx: MultiToolContext) {
           const lines = items.map((r, i) => {
             const conf = confidenceEmoji[r.confidence];
             const similarity = (r.similarity * 100).toFixed(0);
+            const timestamp = r.startSec != null
+              ? ` ⏱ ${formatSeconds(r.startSec)}`
+              : "";
             const snippet = r.expandedContent
               ? r.expandedContent.slice(0, 400)
               : r.content.slice(0, 300);
-            return `  ${i + 1}. ${conf} **${r.videoTitle}** — ${similarity}% match (${r.confidence})\n     "${snippet}..."`;
+            return `  ${i + 1}. ${conf} **${r.videoTitle}**${timestamp} — ${similarity}% match (${r.confidence})\n     "${snippet}..."`;
           });
           sections.push(`### ${channelName}\n${lines.join("\n")}`);
         }

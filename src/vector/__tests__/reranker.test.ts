@@ -20,6 +20,7 @@ function makeCandidate(
     similarity: overrides.similarity ?? 0.8,
     importance: overrides.importance ?? 0.5,
     videoViewCount: overrides.videoViewCount ?? 1000,
+    startSec: overrides.startSec ?? null,
     source: overrides.source ?? "semantic",
     ...overrides,
   };

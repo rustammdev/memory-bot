@@ -41,6 +41,7 @@ const mockVectorSearch = mock(async () => [
     similarity: 0.85,
     importance: 0.7,
     videoViewCount: 5000,
+    startSec: 45.5,
   },
   {
     content: "useState is the most basic React hook for managing state.",
@@ -52,6 +53,7 @@ const mockVectorSearch = mock(async () => [
     similarity: 0.72,
     importance: 0.5,
     videoViewCount: 3000,
+    startSec: 120,
   },
 ]);
 
@@ -66,6 +68,7 @@ const mockVectorSearchMulti = mock(async () => [
     similarity: 0.80,
     importance: 0.6,
     videoViewCount: 4000,
+    startSec: 30,
     channelId: "ch-1",
     channelName: "Channel A",
   },
@@ -81,6 +84,7 @@ const mockKeywordSearch = mock(async () => [
     chunkIndex: 1,
     importance: 0.7,
     videoViewCount: 5000,
+    startSec: 50,
     rank: 0.8,
   },
 ]);
@@ -208,6 +212,13 @@ describe("searchChannel (single-channel pipeline)", () => {
     expect(response.metrics.queryExpansion).toBeDefined();
     expect(response.metrics.queryExpansion!.variants.length).toBe(2);
     expect(response.metrics.queryExpansion!.keywords.length).toBe(3);
+  });
+
+  test("results include timestamps when available", async () => {
+    const response = await searchChannel("ch-1", "React hooks");
+
+    const withTimestamp = response.results.filter((r) => r.startSec !== null);
+    expect(withTimestamp.length).toBeGreaterThan(0);
   });
 
   test("metrics track hit counts by source", async () => {
