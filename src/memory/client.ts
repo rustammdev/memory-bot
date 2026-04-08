@@ -1,14 +1,9 @@
-import { Memory } from "mem0ai/oss";
+import { Memory, type MemoryItem, type SearchResult } from "mem0ai/oss";
 import { createMemoryConfig } from "./config";
 import { createLogger } from "../lib/logger";
 import type { ChatMessage } from "../types/chat";
 
 const log = createLogger("mem0");
-
-interface MemoryEntry {
-  readonly id: string;
-  readonly memory: string;
-}
 
 export interface MemoryContext {
   readonly userId: string;
@@ -21,12 +16,33 @@ export interface StructuredMemory {
 }
 
 let instance: Memory | null = null;
+let initPromise: Promise<void> | null = null;
 
-export function getMemory(): Memory {
+function getInstance(): Memory {
   if (!instance) {
     instance = new Memory(createMemoryConfig());
   }
   return instance;
+}
+
+async function getReady(): Promise<Memory> {
+  const mem = getInstance();
+  // mem0 auto-initializes on first operation, but we ensure it's ready
+  // by catching init errors explicitly
+  if (!initPromise) {
+    initPromise = (async () => {
+      try {
+        // Trigger initialization by calling getAll with a dummy context
+        await mem.getAll({ userId: "__init__" });
+        log.info("mem0 initialized successfully");
+      } catch (err) {
+        log.error("mem0 initialization failed", { err: String(err) });
+        throw err;
+      }
+    })();
+  }
+  await initPromise;
+  return mem;
 }
 
 export async function saveConversation(
@@ -34,13 +50,23 @@ export async function saveConversation(
   ctx: MemoryContext,
 ): Promise<void> {
   const done = log.time("add");
-  const mem = getMemory();
-  const result = await mem.add([...messages], {
-    userId: ctx.userId,
-    agentId: ctx.agentId,
-  });
-  log.debug("add result", { extracted: result?.results?.length ?? 0 });
-  done();
+  try {
+    const mem = await getReady();
+
+    // mem0 accepts Message[] with {role, content} — matches ChatMessage
+    const result = await mem.add(
+      messages.map((m) => ({ role: m.role, content: m.content })),
+      { userId: ctx.userId, agentId: ctx.agentId },
+    );
+
+    const count = result?.results?.length ?? 0;
+    log.info("memories saved", { userId: ctx.userId, extracted: count });
+    done();
+  } catch (err) {
+    log.error("save failed", { userId: ctx.userId, err: String(err) });
+    done();
+    throw err;
+  }
 }
 
 export async function recallMemories(
@@ -48,54 +74,65 @@ export async function recallMemories(
   ctx: MemoryContext,
   limit = 5,
 ): Promise<string> {
-  const mem = getMemory();
-  const results = await mem.search(query, {
-    userId: ctx.userId,
-    agentId: ctx.agentId,
-    limit,
-  });
+  try {
+    const mem = await getReady();
+    const results: SearchResult = await mem.search(query, {
+      userId: ctx.userId,
+      agentId: ctx.agentId,
+      limit,
+    });
 
-  const memories: MemoryEntry[] = results?.results ?? [];
-  log.debug("search", { query: query.slice(0, 50), found: memories.length });
-  if (memories.length === 0) return "";
+    const memories: MemoryItem[] = results?.results ?? [];
+    log.debug("search", { query: query.slice(0, 50), found: memories.length });
 
-  const lines = memories.map(
-    (m, i) => `${i + 1}. ${m.memory}`,
-  );
-  return `Relevant memories from previous conversations:\n${lines.join("\n")}`;
+    if (memories.length === 0) return "";
+
+    const lines = memories.map(
+      (m, i) => `${i + 1}. ${m.memory}`,
+    );
+    return `Relevant memories from previous conversations:\n${lines.join("\n")}`;
+  } catch (err) {
+    log.error("recall failed", { query: query.slice(0, 50), err: String(err) });
+    return "";
+  }
 }
 
 export async function recallStructured(
   query: string,
   ctx: MemoryContext,
 ): Promise<StructuredMemory> {
-  const mem = getMemory();
+  try {
+    const mem = await getReady();
 
-  const [searchResults, allMemories] = await Promise.all([
-    mem.search(query, { userId: ctx.userId, agentId: ctx.agentId, limit: 5 }),
-    mem.getAll({ userId: ctx.userId, agentId: ctx.agentId }),
-  ]);
+    const [searchResults, allMemories] = await Promise.all([
+      mem.search(query, { userId: ctx.userId, agentId: ctx.agentId, limit: 5 }),
+      mem.getAll({ userId: ctx.userId, agentId: ctx.agentId }),
+    ]);
 
-  const relevant: MemoryEntry[] = searchResults?.results ?? [];
-  const all: MemoryEntry[] = allMemories?.results ?? [];
+    const relevant: MemoryItem[] = searchResults?.results ?? [];
+    const all: MemoryItem[] = allMemories?.results ?? [];
 
-  log.debug("structured recall", {
-    query: query.slice(0, 50),
-    relevant: relevant.length,
-    total: all.length,
-  });
+    log.debug("structured recall", {
+      query: query.slice(0, 50),
+      relevant: relevant.length,
+      total: all.length,
+    });
 
-  const memories = relevant.length > 0
-    ? relevant.map((m, i) => `${i + 1}. ${m.memory}`).join("\n")
-    : "";
+    const memories = relevant.length > 0
+      ? relevant.map((m, i) => `${i + 1}. ${m.memory}`).join("\n")
+      : "";
 
-  const userProfile = buildUserProfile(all);
+    const userProfile = buildUserProfile(all);
 
-  return { memories, userProfile };
+    return { memories, userProfile };
+  } catch (err) {
+    log.error("structured recall failed", { err: String(err) });
+    return { memories: "", userProfile: "" };
+  }
 }
 
 function buildUserProfile(
-  allMemories: ReadonlyArray<MemoryEntry>,
+  allMemories: ReadonlyArray<MemoryItem>,
 ): string {
   if (allMemories.length === 0) return "";
 
@@ -103,13 +140,10 @@ function buildUserProfile(
 
   const interests = extractTopics(texts);
   const skillIndicators = detectSkillLevel(texts);
-  const interactionCount = allMemories.length;
 
   const lines: string[] = [];
 
-  if (interactionCount > 0) {
-    lines.push(`- Conversations so far: ${interactionCount} remembered facts`);
-  }
+  lines.push(`- Conversations so far: ${allMemories.length} remembered facts`);
 
   if (skillIndicators.level !== "unknown") {
     lines.push(`- Apparent skill level: ${skillIndicators.level} (${skillIndicators.reason})`);
@@ -119,29 +153,20 @@ function buildUserProfile(
     lines.push(`- Topics they've asked about: ${interests.join(", ")}`);
   }
 
-  return lines.length > 0
-    ? lines.join("\n")
-    : "";
+  return lines.join("\n");
 }
 
 function extractTopics(texts: ReadonlyArray<string>): string[] {
   const topicCounts = new Map<string, number>();
 
-  const patterns = [
-    /(?:asked|interested|wants?|learning|about|discussed|likes?)\s+(\w[\w\s]{2,20})/g,
-    /(?:react|typescript|javascript|python|node|css|html|vue|angular|svelte|next|docker|kubernetes|aws|git|sql|api|rest|graphql|ai|ml|llm)/g,
-  ];
+  const techTerms = /\b(react|typescript|javascript|python|node|css|html|vue|angular|svelte|next|docker|kubernetes|aws|git|sql|api|rest|graphql|ai|ml|llm|rust|go|java|kotlin|swift)\b/g;
 
   for (const text of texts) {
-    for (const pattern of patterns) {
-      pattern.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = pattern.exec(text)) !== null) {
-        const topic = (match[1] ?? match[0]).trim().toLowerCase();
-        if (topic.length > 2) {
-          topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1);
-        }
-      }
+    techTerms.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = techTerms.exec(text)) !== null) {
+      const topic = match[0];
+      topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1);
     }
   }
 
@@ -189,14 +214,16 @@ function detectSkillLevel(
 
 export async function getUserMemories(
   ctx: MemoryContext,
-): Promise<ReadonlyArray<MemoryEntry>> {
-  const mem = getMemory();
-  const all = await mem.getAll({
-    userId: ctx.userId,
-    agentId: ctx.agentId,
-  });
-  return (all?.results ?? []).map((m: MemoryEntry) => ({
-    id: m.id,
-    memory: m.memory,
-  }));
+): Promise<ReadonlyArray<MemoryItem>> {
+  try {
+    const mem = await getReady();
+    const all = await mem.getAll({
+      userId: ctx.userId,
+      agentId: ctx.agentId,
+    });
+    return all?.results ?? [];
+  } catch (err) {
+    log.error("getUserMemories failed", { err: String(err) });
+    return [];
+  }
 }
