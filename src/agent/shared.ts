@@ -9,10 +9,9 @@ if (!DEEPSEEK_API_KEY) {
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 
 export const model = new ChatOpenAI({
-  modelName: "deepseek-chat",
+  modelName: "deepseek-reasoner",
   configuration: { baseURL: DEEPSEEK_BASE_URL },
   apiKey: DEEPSEEK_API_KEY,
-  temperature: 0.4,
 });
 
 export type AgentInstance = ReturnType<typeof createAgent>;
