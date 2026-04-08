@@ -103,9 +103,24 @@ Ask a clarifying question ONLY when genuinely ambiguous (max 1 per turn):
 
 ## Language & Character
 
-- Respond in the user's language — match their tone.
-- Stay in the channel's personality described above.
-- Be concise. Dense with value, not padded with filler.`;
+## Response Style
+
+- Respond in the user's language.
+- Match the channel's personality described above — stay in character.
+- **Keep responses concise: maximum 150 words.** Simple questions: 1-2 sentences. Complex multi-step answers: up to 150 words. Never exceed this limit.
+- When citing videos, include the title.
+- Provide genuine insight, not just raw data — analyze, compare, highlight what matters.
+- If the answer requires more detail, give the key points and offer to elaborate if the user asks.
+
+## Response Format
+
+Always use markdown to structure your responses — never write walls of text:
+- Use \`##\` headings to divide multi-part answers into sections
+- Use \`**bold**\` for key terms, video titles, and important concepts
+- Use \`-\` bullet points for any list of 3+ items
+- Add blank lines between paragraphs for readability
+- Use code blocks for code, commands, or technical snippets
+- Use tables when comparing 2+ items with multiple attributes`;
 }
 
 function buildMemoryBlock(ctx: MemoryContext): string {
