@@ -7,8 +7,27 @@ import {
   type SearchResult,
   type MultiSearchResult,
 } from "../vector/store";
+import {
+  searchChannel,
+  searchMultiChannel,
+  type PipelineResult,
+  type MultiPipelineResult,
+  type PipelineOptions,
+  type PipelineResponse,
+  type PipelineMetrics,
+} from "../vector/search-pipeline";
 
-export { type SearchResult, type MultiSearchResult };
+export {
+  type SearchResult,
+  type MultiSearchResult,
+  type PipelineResult,
+  type MultiPipelineResult,
+  type PipelineOptions,
+  type PipelineResponse,
+  type PipelineMetrics,
+};
+
+// ─── Legacy search (backward-compatible for /api/search) ───────────
 
 export async function searchByChannelId(
   channelId: string,
@@ -36,4 +55,22 @@ export async function searchChannelContent(
   const channel = await requireChannel(channelInput);
   const queryText = requireParam(query, "q");
   return searchByChannelId(channel.id, queryText, limit);
+}
+
+// ─── Premium Pipeline Search (used by agent tools) ─────────────────
+
+export async function premiumSearch(
+  channelId: string,
+  query: string,
+  opts: PipelineOptions = {},
+): Promise<PipelineResponse<PipelineResult>> {
+  return searchChannel(channelId, query, opts);
+}
+
+export async function premiumSearchMulti(
+  channelIds: ReadonlyArray<string>,
+  query: string,
+  opts: PipelineOptions = {},
+): Promise<PipelineResponse<MultiPipelineResult>> {
+  return searchMultiChannel(channelIds, query, opts);
 }

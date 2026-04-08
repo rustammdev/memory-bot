@@ -66,7 +66,9 @@ describe("buildSystemPrompt", () => {
   test("includes confidence section", () => {
     const prompt = buildSystemPrompt(sampleChannel, sampleMetadata);
     expect(prompt).toContain("Confidence");
-    expect(prompt).toContain("similarity below 50%");
+    expect(prompt).toContain("high confidence");
+    expect(prompt).toContain("medium confidence");
+    expect(prompt).toContain("low confidence");
   });
 
   test("includes response style", () => {

@@ -1,7 +1,7 @@
 import { tool } from "langchain";
 import { z } from "zod";
 import * as videoRepo from "../../repositories/video.repo";
-import { searchAcrossChannels } from "../../services/search.service";
+import { premiumSearchMulti } from "../../services/search.service";
 import { createLogger } from "../../lib/logger";
 import { formatCompactNumber } from "../../lib/format";
 import { createGetTranscriptTool, formatVideoLines } from "../tool-helpers";
@@ -21,11 +21,17 @@ export function createMultiChannelTools(ctx: MultiToolContext) {
     async ({ query, limit }) => {
       const done = log.time(`cross_channel_search q="${query}"`);
       try {
-        const results = await searchAcrossChannels(ctx.channelIds, query, limit);
+        const { results, metrics } = await premiumSearchMulti(ctx.channelIds, query, {
+          limit,
+          expandQueries: true,
+          includeContext: true,
+        });
 
         if (results.length === 0) {
           return "No relevant content found across any of the channels.";
         }
+
+        const confidenceEmoji = { high: "●", medium: "◐", low: "○" } as const;
 
         const grouped = new Map<string, typeof results>();
         for (const r of results) {
@@ -35,14 +41,22 @@ export function createMultiChannelTools(ctx: MultiToolContext) {
 
         const sections: string[] = [];
         for (const [channelName, items] of grouped) {
-          const lines = items.map(
-            (r, i) =>
-              `  ${i + 1}. **${r.videoTitle}** — ${(r.similarity * 100).toFixed(0)}% match\n     "${r.content.slice(0, 250)}..."`,
-          );
+          const lines = items.map((r, i) => {
+            const conf = confidenceEmoji[r.confidence];
+            const similarity = (r.similarity * 100).toFixed(0);
+            const snippet = r.expandedContent
+              ? r.expandedContent.slice(0, 400)
+              : r.content.slice(0, 300);
+            return `  ${i + 1}. ${conf} **${r.videoTitle}** — ${similarity}% match (${r.confidence})\n     "${snippet}..."`;
+          });
           sections.push(`### ${channelName}\n${lines.join("\n")}`);
         }
 
-        return `Found ${results.length} relevant segments across ${grouped.size} channels:\n\n${sections.join("\n\n")}`;
+        const searchInfo = metrics.queryExpansion
+          ? `\n_${metrics.totalCandidates} candidates across ${grouped.size} channels evaluated in ${metrics.durationMs}ms._`
+          : "";
+
+        return `Found ${results.length} relevant segments across ${grouped.size} channels:\n\n${sections.join("\n\n")}${searchInfo}`;
       } finally {
         done();
       }
@@ -50,7 +64,7 @@ export function createMultiChannelTools(ctx: MultiToolContext) {
     {
       name: "cross_channel_search",
       description:
-        "Search across ALL available channels by meaning. Returns relevant transcript excerpts grouped by channel with similarity scores. Use as the FIRST tool when comparing how different channels cover a topic.",
+        "Advanced hybrid search across ALL available channels — combines semantic, keyword, and multi-angle query expansion. Returns relevant transcript excerpts grouped by channel with confidence levels. Use as the FIRST tool when comparing how different channels cover a topic.",
       schema: z.object({
         query: z
           .string()

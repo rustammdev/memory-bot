@@ -6,7 +6,7 @@ import * as digestRepo from "../../repositories/digest.repo";
 import * as gapRepo from "../../repositories/content-gap.repo";
 import * as knowledgeRepo from "../../repositories/knowledge.repo";
 import { deduplicateByKey } from "../../lib/collection";
-import { searchByChannelId } from "../../services/search.service";
+import { premiumSearch } from "../../services/search.service";
 import { findLearningPathByChannelId, buildChannelGraphById } from "../../services/knowledge.service";
 import { createLogger } from "../../lib/logger";
 import { createGetTranscriptTool, formatVideoLines } from "../tool-helpers";
@@ -52,17 +52,35 @@ export function createChannelTools(channelId: string) {
     async ({ query, limit }) => {
       const done = log.time(`semantic_search q="${query}"`);
       try {
-        const results = await searchByChannelId(channelId, query, limit);
+        const { results, metrics } = await premiumSearch(channelId, query, {
+          limit,
+          expandQueries: true,
+          includeContext: true,
+        });
 
         if (results.length === 0) {
-          return "No relevant content found. Try a different query or check that transcripts have been fetched.";
+          return "No relevant content found. The channel may not cover this topic, or transcripts haven't been fetched yet.";
         }
 
-        const lines = results.map(
-          (r, i) =>
-            `${i + 1}. **${r.videoTitle}** — ${(r.similarity * 100).toFixed(0)}% match\n   "${r.content.slice(0, 250)}..."`,
-        );
-        return `Found ${results.length} relevant segments:\n\n${lines.join("\n\n")}`;
+        const confidenceEmoji = { high: "●", medium: "◐", low: "○" } as const;
+
+        const lines = results.map((r, i) => {
+          const conf = confidenceEmoji[r.confidence];
+          const similarity = (r.similarity * 100).toFixed(0);
+          const sourceTag = r.sources.length > 1
+            ? ` [${r.sources.join("+")}]`
+            : "";
+          const snippet = r.expandedContent
+            ? r.expandedContent.slice(0, 400)
+            : r.content.slice(0, 300);
+          return `${i + 1}. ${conf} **${r.videoTitle}** — ${similarity}% match (confidence: ${r.confidence})${sourceTag}\n   "${snippet}..."`;
+        });
+
+        const searchInfo = metrics.queryExpansion
+          ? `\n_Search expanded with ${metrics.queryExpansion.variants.length} query variants and ${metrics.queryExpansion.keywords.length} keywords. ${metrics.totalCandidates} candidates evaluated in ${metrics.durationMs}ms._`
+          : "";
+
+        return `Found ${results.length} relevant segments:\n\n${lines.join("\n\n")}${searchInfo}`;
       } finally {
         done();
       }
@@ -70,15 +88,15 @@ export function createChannelTools(channelId: string) {
     {
       name: "semantic_search",
       description:
-        "Search across all channel transcripts by meaning, not just keywords. Use as the FIRST tool when the user asks about a topic, concept, or question discussed in videos (e.g. 'what did they say about React hooks?'). Returns the most relevant transcript excerpts with video references. Do NOT use for browsing videos by title — use list_videos instead. Requires transcripts to have been fetched and vectorized.",
+        "Advanced hybrid search across all channel transcripts — combines semantic meaning, keyword matching, and multi-angle query expansion. Use as the FIRST tool when the user asks about a topic, concept, or question discussed in videos. Returns the most relevant transcript excerpts with confidence levels (high/medium/low), video references, and expanded context. Do NOT use for browsing videos by title — use list_videos instead.",
       schema: z.object({
         query: z.string().describe("The search query — describe what you want to find"),
         limit: z
           .number()
           .min(1)
-          .max(10)
-          .default(5)
-          .describe("Maximum number of results"),
+          .max(15)
+          .default(8)
+          .describe("Maximum number of results (default 8)"),
       }),
     },
   );
