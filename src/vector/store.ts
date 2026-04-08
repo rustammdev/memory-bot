@@ -1,4 +1,5 @@
 import { db } from "../db/connection";
+import { MIN_SIMILARITY, MAX_PER_VIDEO } from "./search-constants";
 
 export interface ChunkRecord {
   readonly channelId: string;
@@ -197,17 +198,14 @@ export interface EnrichedSearchOptions {
   readonly maxPerVideo?: number;
 }
 
-const DEFAULT_MIN_SIMILARITY = 0.35;
-const DEFAULT_MAX_PER_VIDEO = 2;
-
 export async function vectorSearchEnriched(
   channelId: string,
   queryEmbedding: number[],
   opts: EnrichedSearchOptions = {},
 ): Promise<ReadonlyArray<EnrichedChunk>> {
   const limit = opts.limit ?? 10;
-  const minSim = opts.minSimilarity ?? DEFAULT_MIN_SIMILARITY;
-  const maxPerVideo = opts.maxPerVideo ?? DEFAULT_MAX_PER_VIDEO;
+  const minSim = opts.minSimilarity ?? MIN_SIMILARITY;
+  const maxPerVideo = opts.maxPerVideo ?? MAX_PER_VIDEO;
   const vectorStr = toVectorLiteral(queryEmbedding);
 
   const rows = await db`
@@ -259,8 +257,8 @@ export async function vectorSearchEnrichedMulti(
 ): Promise<ReadonlyArray<MultiEnrichedChunk>> {
   if (channelIds.length === 0) return [];
   const limit = opts.limit ?? 15;
-  const minSim = opts.minSimilarity ?? DEFAULT_MIN_SIMILARITY;
-  const maxPerVideo = opts.maxPerVideo ?? DEFAULT_MAX_PER_VIDEO;
+  const minSim = opts.minSimilarity ?? MIN_SIMILARITY;
+  const maxPerVideo = opts.maxPerVideo ?? MAX_PER_VIDEO;
   const vectorStr = toVectorLiteral(queryEmbedding);
   const ids = Array.from(channelIds);
 

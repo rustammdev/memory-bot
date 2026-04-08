@@ -3,20 +3,13 @@ import { z } from "zod";
 import * as videoRepo from "../../repositories/video.repo";
 import { premiumSearchMulti } from "../../services/search.service";
 import { createLogger } from "../../lib/logger";
-import { formatCompactNumber } from "../../lib/format";
+import { formatCompactNumber, formatTimestamp } from "../../lib/format";
+import { CONFIDENCE_ICON } from "../../vector/search-constants";
 import { createGetTranscriptTool, formatVideoLines } from "../tool-helpers";
 import type { ChannelRow } from "../../repositories/channel.repo";
 import type { MetadataRow } from "../../repositories/metadata.repo";
 
 const log = createLogger("multi-agent-tool");
-
-function formatSeconds(totalSec: number): string {
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = Math.floor(totalSec % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
 
 interface MultiToolContext {
   readonly channelIds: ReadonlyArray<string>;
@@ -39,8 +32,6 @@ export function createMultiChannelTools(ctx: MultiToolContext) {
           return "No relevant content found across any of the channels.";
         }
 
-        const confidenceEmoji = { high: "●", medium: "◐", low: "○" } as const;
-
         const grouped = new Map<string, typeof results>();
         for (const r of results) {
           const existing = grouped.get(r.channelName) ?? [];
@@ -50,10 +41,10 @@ export function createMultiChannelTools(ctx: MultiToolContext) {
         const sections: string[] = [];
         for (const [channelName, items] of grouped) {
           const lines = items.map((r, i) => {
-            const conf = confidenceEmoji[r.confidence];
+            const conf = CONFIDENCE_ICON[r.confidence];
             const similarity = (r.similarity * 100).toFixed(0);
             const timestamp = r.startSec != null
-              ? ` ⏱ ${formatSeconds(r.startSec)}`
+              ? ` ⏱ ${formatTimestamp(r.startSec)}`
               : "";
             const snippet = r.expandedContent
               ? r.expandedContent.slice(0, 400)

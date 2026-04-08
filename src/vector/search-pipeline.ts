@@ -32,12 +32,16 @@ import {
   type MatchSource,
   type Confidence,
 } from "./reranker";
+import {
+  MIN_SIMILARITY,
+  MAX_PER_VIDEO,
+  DEFAULT_RESULT_LIMIT,
+  RETRIEVAL_MULTIPLIER,
+} from "./search-constants";
 import { createLogger } from "../lib/logger";
 import { processWithConcurrency } from "../lib/concurrency";
 
 const log = createLogger("search-pipeline");
-
-// ─── Public Types ──────────────────────────────────────────────────
 
 export interface PipelineResult {
   readonly content: string;
@@ -80,11 +84,6 @@ export interface PipelineResponse<T extends PipelineResult> {
 }
 
 // ─── Defaults ──────────────────────────────────────────────────────
-
-const DEFAULT_LIMIT = 8;
-const DEFAULT_MIN_SIMILARITY = 0.35;
-const DEFAULT_MAX_PER_VIDEO = 2;
-const RETRIEVAL_MULTIPLIER = 3; // fetch 3x limit, then rerank down
 
 // ─── Candidate ID Generation ───────────────────────────────────────
 
@@ -171,7 +170,8 @@ async function expandContext(
         if (after.length > 0) parts.push(after.map((a) => a.content).join(" "));
 
         output[i] = { result: r, expanded: parts.join("\n\n") };
-      } catch {
+      } catch (err) {
+        log.warn("context expansion failed", { transcriptId: r.transcriptId, err: String(err) });
         output[i] = { result: r, expanded: null };
       }
     },
@@ -188,9 +188,9 @@ export async function searchChannel(
   opts: PipelineOptions = {},
 ): Promise<PipelineResponse<PipelineResult>> {
   const start = performance.now();
-  const limit = opts.limit ?? DEFAULT_LIMIT;
-  const minSimilarity = opts.minSimilarity ?? DEFAULT_MIN_SIMILARITY;
-  const maxPerVideo = opts.maxPerVideo ?? DEFAULT_MAX_PER_VIDEO;
+  const limit = opts.limit ?? DEFAULT_RESULT_LIMIT;
+  const minSimilarity = opts.minSimilarity ?? MIN_SIMILARITY;
+  const maxPerVideo = opts.maxPerVideo ?? MAX_PER_VIDEO;
   const shouldExpand = opts.expandQueries ?? true;
   const includeContext = opts.includeContext ?? true;
   const fetchLimit = limit * RETRIEVAL_MULTIPLIER;
@@ -244,8 +244,8 @@ export async function searchChannel(
   // Build metrics
   const metrics: PipelineMetrics = {
     totalCandidates: rankedLists.reduce((sum, l) => sum + l.length, 0),
-    vectorHits: rankedLists[0]?.length ?? 0,
-    keywordHits: rankedLists[1]?.length ?? 0,
+    vectorHits: rankedLists.at(0)?.length ?? 0,
+    keywordHits: rankedLists.at(1)?.length ?? 0,
     expandedHits: rankedLists.slice(2).reduce((sum, l) => sum + l.length, 0),
     queryExpansion: expansion,
     durationMs: Math.round(performance.now() - start),
@@ -284,9 +284,9 @@ export async function searchMultiChannel(
   opts: PipelineOptions = {},
 ): Promise<PipelineResponse<MultiPipelineResult>> {
   const start = performance.now();
-  const limit = opts.limit ?? DEFAULT_LIMIT;
-  const minSimilarity = opts.minSimilarity ?? DEFAULT_MIN_SIMILARITY;
-  const maxPerVideo = opts.maxPerVideo ?? DEFAULT_MAX_PER_VIDEO;
+  const limit = opts.limit ?? DEFAULT_RESULT_LIMIT;
+  const minSimilarity = opts.minSimilarity ?? MIN_SIMILARITY;
+  const maxPerVideo = opts.maxPerVideo ?? MAX_PER_VIDEO;
   const shouldExpand = opts.expandQueries ?? true;
   const includeContext = opts.includeContext ?? true;
   const fetchLimit = limit * RETRIEVAL_MULTIPLIER;
@@ -336,8 +336,8 @@ export async function searchMultiChannel(
 
   const metrics: PipelineMetrics = {
     totalCandidates: rankedLists.reduce((sum, l) => sum + l.length, 0),
-    vectorHits: rankedLists[0]?.length ?? 0,
-    keywordHits: rankedLists[1]?.length ?? 0,
+    vectorHits: rankedLists.at(0)?.length ?? 0,
+    keywordHits: rankedLists.at(1)?.length ?? 0,
     expandedHits: rankedLists.slice(2).reduce((sum, l) => sum + l.length, 0),
     queryExpansion: expansion,
     durationMs: Math.round(performance.now() - start),

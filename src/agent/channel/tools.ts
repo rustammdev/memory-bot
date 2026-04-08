@@ -9,17 +9,11 @@ import { deduplicateByKey } from "../../lib/collection";
 import { premiumSearch } from "../../services/search.service";
 import { findLearningPathByChannelId, buildChannelGraphById } from "../../services/knowledge.service";
 import { createLogger } from "../../lib/logger";
+import { formatTimestamp } from "../../lib/format";
+import { CONFIDENCE_ICON, PER_QUERY_BUFFER } from "../../vector/search-constants";
 import { createGetTranscriptTool, formatVideoLines } from "../tool-helpers";
 
 const log = createLogger("agent-tool");
-
-function formatSeconds(totalSec: number): string {
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = Math.floor(totalSec % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
 
 export function createChannelTools(channelId: string) {
   const listVideos = tool(
@@ -65,7 +59,7 @@ export function createChannelTools(channelId: string) {
         const allResponses = await Promise.all(
           queryList.map((q) =>
             premiumSearch(channelId, q, {
-              limit: Math.ceil(limit / queryList.length) + 2,
+              limit: Math.ceil(limit / queryList.length) + PER_QUERY_BUFFER,
               expandQueries: true,
               includeContext: true,
             }),
@@ -93,16 +87,14 @@ export function createChannelTools(channelId: string) {
           return "No relevant content found. The channel may not cover this topic, or transcripts haven't been fetched yet.";
         }
 
-        const confidenceEmoji = { high: "●", medium: "◐", low: "○" } as const;
-
         const lines = topResults.map((r, i) => {
-          const conf = confidenceEmoji[r.confidence];
+          const conf = CONFIDENCE_ICON[r.confidence];
           const similarity = (r.similarity * 100).toFixed(0);
           const sourceTag = r.sources.length > 1
             ? ` [${r.sources.join("+")}]`
             : "";
           const timestamp = r.startSec != null
-            ? ` ⏱ ${formatSeconds(r.startSec)}`
+            ? ` ⏱ ${formatTimestamp(r.startSec)}`
             : "";
           const snippet = r.expandedContent
             ? r.expandedContent.slice(0, 400)

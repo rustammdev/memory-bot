@@ -15,13 +15,20 @@ export interface RawTranscript {
   readonly segments: ReadonlyArray<TranscriptSegment>;
 }
 
+interface ParsedVtt {
+  readonly text: string;
+  readonly segments: ReadonlyArray<TranscriptSegment>;
+}
+
 const TIMESTAMP_RE = /^(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})\.(\d{3})$/;
+
+const VTT_SKIP_PREFIXES = ["Kind:", "Language:"];
 
 function parseTimestamp(h: string, m: string, s: string, ms: string): number {
   return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(s) + parseInt(ms) / 1000;
 }
 
-function cleanLine(line: string): string {
+function cleanCaptionLine(line: string): string {
   return line
     .replace(/<[^>]+>/g, "")
     .replace(/&amp;/g, "&")
@@ -31,9 +38,8 @@ function cleanLine(line: string): string {
     .trim();
 }
 
-interface ParsedVtt {
-  readonly text: string;
-  readonly segments: ReadonlyArray<TranscriptSegment>;
+function isVttMeta(line: string): boolean {
+  return line === "" || line === "WEBVTT" || VTT_SKIP_PREFIXES.some((p) => line.startsWith(p));
 }
 
 function parseVtt(raw: string): ParsedVtt {
@@ -41,65 +47,46 @@ function parseVtt(raw: string): ParsedVtt {
   const segments: TranscriptSegment[] = [];
   const textLines: string[] = [];
 
-  let currentStart = -1;
-  let currentEnd = -1;
-  let currentLines: string[] = [];
+  let startSec = -1;
+  let endSec = -1;
+  let captionLines: string[] = [];
   let prevText = "";
+
+  function flushSegment(): void {
+    if (startSec < 0 || captionLines.length === 0) return;
+    const text = captionLines.join(" ");
+    if (text !== prevText) {
+      segments.push({ startSec, endSec, text });
+      textLines.push(text);
+      prevText = text;
+    }
+    captionLines = [];
+    startSec = -1;
+  }
 
   for (const line of lines) {
     const trimmed = line.trim();
 
-    if (
-      trimmed === "" ||
-      trimmed === "WEBVTT" ||
-      trimmed.startsWith("Kind:") ||
-      trimmed.startsWith("Language:")
-    ) {
-      // Flush current segment on blank line
-      if (currentStart >= 0 && currentLines.length > 0) {
-        const text = currentLines.join(" ");
-        if (text !== prevText) {
-          segments.push({ startSec: currentStart, endSec: currentEnd, text });
-          textLines.push(text);
-          prevText = text;
-        }
-        currentLines = [];
-        currentStart = -1;
-      }
+    if (isVttMeta(trimmed)) {
+      flushSegment();
       continue;
     }
 
     const tsMatch = trimmed.match(TIMESTAMP_RE);
     if (tsMatch) {
-      // Flush previous segment if any text accumulated
-      if (currentStart >= 0 && currentLines.length > 0) {
-        const text = currentLines.join(" ");
-        if (text !== prevText) {
-          segments.push({ startSec: currentStart, endSec: currentEnd, text });
-          textLines.push(text);
-          prevText = text;
-        }
-        currentLines = [];
-      }
-      currentStart = parseTimestamp(tsMatch[1]!, tsMatch[2]!, tsMatch[3]!, tsMatch[4]!);
-      currentEnd = parseTimestamp(tsMatch[5]!, tsMatch[6]!, tsMatch[7]!, tsMatch[8]!);
+      flushSegment();
+      startSec = parseTimestamp(tsMatch[1]!, tsMatch[2]!, tsMatch[3]!, tsMatch[4]!);
+      endSec = parseTimestamp(tsMatch[5]!, tsMatch[6]!, tsMatch[7]!, tsMatch[8]!);
       continue;
     }
 
-    const cleaned = cleanLine(trimmed);
+    const cleaned = cleanCaptionLine(trimmed);
     if (cleaned !== "") {
-      currentLines.push(cleaned);
+      captionLines.push(cleaned);
     }
   }
 
-  // Flush last segment
-  if (currentStart >= 0 && currentLines.length > 0) {
-    const text = currentLines.join(" ");
-    if (text !== prevText) {
-      segments.push({ startSec: currentStart, endSec: currentEnd, text });
-      textLines.push(text);
-    }
-  }
+  flushSegment();
 
   return { text: textLines.join(" "), segments };
 }
@@ -139,8 +126,8 @@ export async function fetchTranscript(
 
   try {
     const vttContent = await Bun.file(vttPath).text();
-
     const { text, segments } = parseVtt(vttContent);
+
     if (text.length === 0) {
       throw new NotFoundError(
         `Subtitles empty for video ${youtubeVideoId} (lang: ${language})`,
