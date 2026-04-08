@@ -2,7 +2,7 @@ import { requireChannel } from "./channel.helpers";
 import { getChannelAgent } from "../agent/channel/create";
 import { getMultiChannelAgent } from "../agent/multi/create";
 import { findByUsernames } from "../repositories/channel.repo";
-import { recallMemories, saveConversation } from "../memory/client";
+import { recallStructured, saveConversation } from "../memory/client";
 import { createLogger } from "../lib/logger";
 import { runInBackground } from "../lib/concurrency";
 import { ValidationError } from "../lib/errors";
@@ -34,20 +34,17 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
   };
 
   const recallDone = log.time("memory recall");
-  const [memoryContext, agent] = await Promise.all([
-    recallMemories(request.message, memoryCtx),
-    getChannelAgent(channel),
-  ]);
+  const memoryResult = await recallStructured(request.message, memoryCtx);
   recallDone();
 
-  log.debug("memory context", { found: memoryContext.length > 0 });
+  log.debug("memory context", {
+    memories: memoryResult.memories.length > 0,
+    profile: memoryResult.userProfile.length > 0,
+  });
 
-  const memoryMessages: ChatMessage[] = memoryContext
-    ? [{ role: "assistant", content: memoryContext }]
-    : [];
+  const agent = await getChannelAgent(channel, memoryResult);
 
   const messages: ChatMessage[] = [
-    ...memoryMessages,
     ...(request.history ?? []),
     { role: "user", content: request.message },
   ];
@@ -126,20 +123,17 @@ export async function multiChat(
   };
 
   const recallDone = log.time("multi memory recall");
-  const [memoryContext, agent] = await Promise.all([
-    recallMemories(request.message, memoryCtx),
-    getMultiChannelAgent(channels),
-  ]);
+  const memoryResult = await recallStructured(request.message, memoryCtx);
   recallDone();
 
-  log.debug("multi memory context", { found: memoryContext.length > 0 });
+  log.debug("multi memory context", {
+    memories: memoryResult.memories.length > 0,
+    profile: memoryResult.userProfile.length > 0,
+  });
 
-  const memoryMessages: ChatMessage[] = memoryContext
-    ? [{ role: "assistant", content: memoryContext }]
-    : [];
+  const agent = await getMultiChannelAgent(channels, memoryResult);
 
   const messages: ChatMessage[] = [
-    ...memoryMessages,
     ...(request.history ?? []),
     { role: "user", content: request.message },
   ];

@@ -16,3 +16,11 @@ export function formatDuration(
 }
 
 export const MAX_TRANSCRIPT_CHARS = 8_000;
+
+export function formatTimestamp(totalSec: number): string {
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = Math.floor(totalSec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}

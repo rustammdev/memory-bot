@@ -38,15 +38,30 @@ describe("buildMultiChannelPrompt", () => {
     expect(prompt).toContain("get_channel_overview");
   });
 
-  test("includes reasoning instructions", () => {
+  test("includes reasoning framework", () => {
     const prompt = buildMultiChannelPrompt(channels);
-    expect(prompt).toContain("Reasoning");
-    expect(prompt).toContain("THINK before acting");
+    expect(prompt).toContain("How to Think");
+    expect(prompt).toContain("Step 1");
   });
 
   test("handles single channel", () => {
     const prompt = buildMultiChannelPrompt([channels[0]!]);
     expect(prompt).toContain("Fireship");
     expect(prompt).not.toContain("3Blue1Brown");
+  });
+
+  test("injects memory context when provided", () => {
+    const prompt = buildMultiChannelPrompt(channels, {
+      memories: "1. User compared React tutorials before",
+      userProfile: "- Topics they've asked about: react, typescript",
+    });
+    expect(prompt).toContain("About This User");
+    expect(prompt).toContain("react, typescript");
+    expect(prompt).toContain("Past Conversations");
+  });
+
+  test("omits memory section when null", () => {
+    const prompt = buildMultiChannelPrompt(channels, null);
+    expect(prompt).not.toContain("About This User");
   });
 });

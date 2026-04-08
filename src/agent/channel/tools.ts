@@ -6,9 +6,11 @@ import * as digestRepo from "../../repositories/digest.repo";
 import * as gapRepo from "../../repositories/content-gap.repo";
 import * as knowledgeRepo from "../../repositories/knowledge.repo";
 import { deduplicateByKey } from "../../lib/collection";
-import { searchByChannelId } from "../../services/search.service";
+import { premiumSearch } from "../../services/search.service";
 import { findLearningPathByChannelId, buildChannelGraphById } from "../../services/knowledge.service";
 import { createLogger } from "../../lib/logger";
+import { formatTimestamp } from "../../lib/format";
+import { CONFIDENCE_ICON, PER_QUERY_BUFFER } from "../../vector/search-constants";
 import { createGetTranscriptTool, formatVideoLines } from "../tool-helpers";
 
 const log = createLogger("agent-tool");
@@ -49,20 +51,67 @@ export function createChannelTools(channelId: string) {
   const getTranscript = createGetTranscriptTool("list_videos");
 
   const semanticSearch = tool(
-    async ({ query, limit }) => {
-      const done = log.time(`semantic_search q="${query}"`);
+    async ({ queries, limit }) => {
+      const queryList = queries.length > 0 ? queries : [""];
+      const done = log.time(`semantic_search queries=${queryList.length}`);
       try {
-        const results = await searchByChannelId(channelId, query, limit);
+        // Run all queries in parallel
+        const allResponses = await Promise.all(
+          queryList.map((q) =>
+            premiumSearch(channelId, q, {
+              limit: Math.ceil(limit / queryList.length) + PER_QUERY_BUFFER,
+              expandQueries: true,
+              includeContext: true,
+            }),
+          ),
+        );
 
-        if (results.length === 0) {
-          return "No relevant content found. Try a different query or check that transcripts have been fetched.";
+        // Merge results, deduplicate by video+chunk
+        const seen = new Set<string>();
+        const merged: typeof allResponses[0]["results"][number][] = [];
+        for (const { results } of allResponses) {
+          for (const r of results) {
+            const key = `${r.videoId}:${r.content.slice(0, 80)}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              merged.push(r);
+            }
+          }
         }
 
-        const lines = results.map(
-          (r, i) =>
-            `${i + 1}. **${r.videoTitle}** — ${(r.similarity * 100).toFixed(0)}% match\n   "${r.content.slice(0, 250)}..."`,
-        );
-        return `Found ${results.length} relevant segments:\n\n${lines.join("\n\n")}`;
+        // Sort by score and take top N
+        merged.sort((a, b) => b.score - a.score);
+        const topResults = merged.slice(0, limit);
+
+        if (topResults.length === 0) {
+          return "No relevant content found. The channel may not cover this topic, or transcripts haven't been fetched yet.";
+        }
+
+        const lines = topResults.map((r, i) => {
+          const conf = CONFIDENCE_ICON[r.confidence];
+          const similarity = (r.similarity * 100).toFixed(0);
+          const sourceTag = r.sources.length > 1
+            ? ` [${r.sources.join("+")}]`
+            : "";
+          const timestamp = r.startSec != null
+            ? ` ⏱ ${formatTimestamp(r.startSec)}`
+            : "";
+          const snippet = r.expandedContent
+            ? r.expandedContent.slice(0, 400)
+            : r.content.slice(0, 300);
+          return `${i + 1}. ${conf} **${r.videoTitle}**${timestamp} — ${similarity}% match (${r.confidence})${sourceTag}\n   "${snippet}..."`;
+        });
+
+        const totalCandidates = allResponses.reduce((s, r) => s + r.metrics.totalCandidates, 0);
+        const totalMs = allResponses.reduce((s, r) => s + r.metrics.durationMs, 0);
+
+        const searchInfo = queryList.length > 1
+          ? `\n_${queryList.length} parallel queries searched ${totalCandidates} candidates in ${totalMs}ms._`
+          : allResponses[0]?.metrics.queryExpansion
+            ? `\n_${totalCandidates} candidates evaluated in ${totalMs}ms._`
+            : "";
+
+        return `Found ${topResults.length} relevant segments:\n\n${lines.join("\n\n")}${searchInfo}`;
       } finally {
         done();
       }
@@ -70,15 +119,19 @@ export function createChannelTools(channelId: string) {
     {
       name: "semantic_search",
       description:
-        "Search across all channel transcripts by meaning, not just keywords. Use as the FIRST tool when the user asks about a topic, concept, or question discussed in videos (e.g. 'what did they say about React hooks?'). Returns the most relevant transcript excerpts with video references. Do NOT use for browsing videos by title — use list_videos instead. Requires transcripts to have been fetched and vectorized.",
+        "Advanced hybrid search across all channel transcripts — combines semantic meaning, keyword matching, and multi-angle query expansion. Supports MULTIPLE parallel queries for complex questions. Use as the FIRST tool when the user asks about a topic, concept, or question. Returns transcript excerpts with confidence levels (high/medium/low), video timestamps, and expanded context. Do NOT use for browsing videos by title — use list_videos instead.",
       schema: z.object({
-        query: z.string().describe("The search query — describe what you want to find"),
+        queries: z
+          .array(z.string())
+          .min(1)
+          .max(5)
+          .describe("One or more search queries to run in parallel. Use multiple queries to search from different angles (e.g. ['React hooks tutorial', 'useState useEffect examples'])"),
         limit: z
           .number()
           .min(1)
-          .max(10)
-          .default(5)
-          .describe("Maximum number of results"),
+          .max(15)
+          .default(8)
+          .describe("Maximum total results across all queries (default 8)"),
       }),
     },
   );

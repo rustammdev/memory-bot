@@ -4,6 +4,7 @@ import { buildMultiChannelPrompt } from "./prompt";
 import * as metadataRepo from "../../repositories/metadata.repo";
 import type { ChannelRow } from "../../repositories/channel.repo";
 import type { MetadataRow } from "../../repositories/metadata.repo";
+import type { StructuredMemory } from "../../memory/client";
 import {
   model,
   getCached,
@@ -17,10 +18,15 @@ function buildCacheKey(channels: ReadonlyArray<ChannelRow>): string {
 
 export async function getMultiChannelAgent(
   channels: ReadonlyArray<ChannelRow>,
+  memory?: StructuredMemory | null,
 ): Promise<AgentInstance> {
-  const cacheKey = buildCacheKey(channels);
-  const cached = getCached(cacheKey);
-  if (cached) return cached;
+  const hasMemory = memory && (memory.memories.length > 0 || memory.userProfile.length > 0);
+
+  if (!hasMemory) {
+    const cacheKey = buildCacheKey(channels);
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+  }
 
   const metadataResults = await Promise.all(
     channels.map((ch) => metadataRepo.findLatest(ch.id)),
@@ -45,10 +51,13 @@ export async function getMultiChannelAgent(
     channelsByUsername,
     metadataByChannelId,
   });
-  const systemPrompt = buildMultiChannelPrompt(channelSummaries);
+  const systemPrompt = buildMultiChannelPrompt(channelSummaries, memory);
   const agent = createAgent({ model, tools, systemPrompt });
   const configured = agent.withConfig({ recursionLimit: 15 });
 
-  putCached(cacheKey, configured);
+  if (!hasMemory) {
+    putCached(buildCacheKey(channels), configured);
+  }
+
   return configured;
 }

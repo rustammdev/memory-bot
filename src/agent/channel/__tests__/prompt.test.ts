@@ -47,10 +47,13 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Traits:");
   });
 
-  test("includes reasoning instructions", () => {
+  test("includes reasoning framework", () => {
     const prompt = buildSystemPrompt(sampleChannel, sampleMetadata);
-    expect(prompt).toContain("Reasoning");
-    expect(prompt).toContain("THINK before acting");
+    expect(prompt).toContain("How to Think");
+    expect(prompt).toContain("Step 1");
+    expect(prompt).toContain("Step 2");
+    expect(prompt).toContain("Step 3");
+    expect(prompt).toContain("Step 4");
   });
 
   test("includes tool descriptions", () => {
@@ -66,18 +69,57 @@ describe("buildSystemPrompt", () => {
   test("includes confidence section", () => {
     const prompt = buildSystemPrompt(sampleChannel, sampleMetadata);
     expect(prompt).toContain("Confidence");
-    expect(prompt).toContain("similarity below 50%");
+    expect(prompt).toContain("high");
+    expect(prompt).toContain("medium");
+    expect(prompt).toContain("low");
+    expect(prompt).toContain("Never fabricate");
   });
 
-  test("includes response style", () => {
+  test("includes proactive intelligence section", () => {
     const prompt = buildSystemPrompt(sampleChannel, sampleMetadata);
-    expect(prompt).toContain("Response Style");
-    expect(prompt).toContain("user's language");
+    expect(prompt).toContain("Proactive Intelligence");
+  });
+
+  test("includes response calibration", () => {
+    const prompt = buildSystemPrompt(sampleChannel, sampleMetadata);
+    expect(prompt).toContain("Response Calibration");
+    expect(prompt).toContain("Quick factual");
+    expect(prompt).toContain("Deep analysis");
+  });
+
+  test("includes when NOT to use tools section", () => {
+    const prompt = buildSystemPrompt(sampleChannel, sampleMetadata);
+    expect(prompt).toContain("When NOT to Use Tools");
   });
 
   test("handles null metadata", () => {
     const prompt = buildSystemPrompt(sampleChannel, null);
     expect(prompt).toContain("Test Channel");
-    expect(prompt).toContain("other"); // default category
+    expect(prompt).toContain("other");
+  });
+
+  test("injects memory context when provided", () => {
+    const prompt = buildSystemPrompt(sampleChannel, sampleMetadata, {
+      memories: "1. User asked about React hooks before",
+      userProfile: "- Apparent skill level: beginner",
+    });
+    expect(prompt).toContain("About This User");
+    expect(prompt).toContain("beginner");
+    expect(prompt).toContain("Past Conversations");
+    expect(prompt).toContain("React hooks");
+  });
+
+  test("omits memory section when no memory", () => {
+    const prompt = buildSystemPrompt(sampleChannel, sampleMetadata, null);
+    expect(prompt).not.toContain("About This User");
+    expect(prompt).not.toContain("Past Conversations");
+  });
+
+  test("omits memory section when memory is empty", () => {
+    const prompt = buildSystemPrompt(sampleChannel, sampleMetadata, {
+      memories: "",
+      userProfile: "",
+    });
+    expect(prompt).not.toContain("About This User");
   });
 });
