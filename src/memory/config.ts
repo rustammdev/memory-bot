@@ -1,3 +1,5 @@
+import type { MemoryConfig } from "mem0ai/oss";
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} environment variable is required`);
@@ -25,12 +27,12 @@ function parseDatabaseUrl(url: string): {
   };
 }
 
-export function createMemoryConfig() {
+export function createMemoryConfig(): MemoryConfig {
   const db = parseDatabaseUrl(DATABASE_URL);
   return {
-    version: "v1.1" as const,
+    version: "v1.1",
     llm: {
-      provider: "openai" as const,
+      provider: "openai",
       config: {
         apiKey: DEEPSEEK_API_KEY,
         model: "deepseek-chat",
@@ -38,14 +40,15 @@ export function createMemoryConfig() {
       },
     },
     embedder: {
-      provider: "openai" as const,
+      provider: "openai",
       config: {
         apiKey: OPENAI_API_KEY,
         model: "text-embedding-3-small",
+        embeddingDims: 1536,
       },
     },
     vectorStore: {
-      provider: "pgvector" as const,
+      provider: "pgvector",
       config: {
         host: db.host,
         port: db.port,
