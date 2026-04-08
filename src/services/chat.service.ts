@@ -297,17 +297,10 @@ export async function* chatStream(
   const channel = await requireChannel(request.channel);
   const memoryCtx = { userId: request.userId, agentId: channel.id };
 
-  const [memoryContext, agent] = await Promise.all([
-    recallMemories(request.message, memoryCtx),
-    getChannelAgent(channel),
-  ]);
-
-  const memoryMessages: ChatMessage[] = memoryContext
-    ? [{ role: "assistant", content: memoryContext }]
-    : [];
+  const memoryResult = await recallStructured(request.message, memoryCtx);
+  const agent = await getChannelAgent(channel, memoryResult);
 
   const messages: ChatMessage[] = [
-    ...memoryMessages,
     ...(request.history ?? []),
     { role: "user", content: request.message },
   ];
@@ -363,17 +356,10 @@ export async function* multiChatStream(
 
   const memoryCtx = { userId: request.userId, agentId: MULTI_AGENT_ID };
 
-  const [memoryContext, agent] = await Promise.all([
-    recallMemories(request.message, memoryCtx),
-    getMultiChannelAgent(channels),
-  ]);
-
-  const memoryMessages: ChatMessage[] = memoryContext
-    ? [{ role: "assistant", content: memoryContext }]
-    : [];
+  const memoryResult = await recallStructured(request.message, memoryCtx);
+  const agent = await getMultiChannelAgent(channels, memoryResult);
 
   const messages: ChatMessage[] = [
-    ...memoryMessages,
     ...(request.history ?? []),
     { role: "user", content: request.message },
   ];
