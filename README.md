@@ -123,4 +123,4 @@ bun test            # run the test suite
 
 ## License
 
-MIT
+Released under the [MIT License](./LICENSE).
